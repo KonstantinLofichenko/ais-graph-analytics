@@ -1,0 +1,59 @@
+services:
+  ais-kafka:
+    image: apache/kafka:4.3.1
+    container_name: ais-kafka
+    hostname: ais-kafka
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_LISTENERS: PLAINTEXT://:29092,CONTROLLER://:29093,PLAINTEXT_HOST://:9092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://ais-kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@ais-kafka:29093
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_NUM_PARTITIONS: 3
+    ports:
+      - "9092:9092"
+    networks:
+      - ais-network
+
+  ksqldb-server:
+    image: confluentinc/cp-ksqldb-server:8.3.1
+    container_name: ksqldb-server
+    depends_on:
+      - ais-kafka
+    environment:
+      KSQL_BOOTSTRAP_SERVERS: ais-kafka:29092
+      KSQL_LISTENERS: http://0.0.0.0:8088
+      KSQL_KSQL_SERVICE_ID: ais_ksqldb
+      KSQL_KSQL_LOG4J_ROOT_LOGLEVEL: INFO
+      KSQL_KSQL_HIDDEN_TOPICS: '^_.*'
+    ports:
+      - "8088:8088"
+    networks:
+      - ais-network
+
+  kafbat-ui:
+    image: ghcr.io/kafbat/kafka-ui:latest
+    container_name: kafbat-ui
+    depends_on:
+      - ais-kafka
+      - ksqldb-server
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: ais-kafka:29092
+      KAFKA_CLUSTERS_0_KSQLDBSERVER: http://ksqldb-server:8088
+    ports:
+      - "8081:8080"
+    networks:
+      - ais-network
+
+networks:
+  ais-network:
+    name: ais-network
+    driver: bridge

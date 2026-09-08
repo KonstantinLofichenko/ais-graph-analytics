@@ -1,0 +1,49 @@
+# Environment and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.crt
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+ENV/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# dbt
+target/
+dbt_packages/
+logs/
+*.manifest.json
+
+# Airflow
+airflow/logs/
+airflow/airflow.db
+airflow/airflow.cfg
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# VS Code
+.vscode/
+*.code-workspace
+
+# Local data and generated exports
+*.sqlite
+*.db
+*.log
