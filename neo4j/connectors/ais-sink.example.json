@@ -1,0 +1,16 @@
+{
+  "name": "ais-neo4j-sink",
+  "config": {
+    "topics": "ais.positions",
+    "connector.class": "org.neo4j.connectors.kafka.sink.Neo4jConnector",
+    "key.converter": "org.apache.kafka.connect.storage.StringConverter",
+    "value.converter": "org.apache.kafka.connect.json.JsonConverter",
+    "value.converter.schemas.enable": "false",
+    "neo4j.uri": "bolt://host.docker.internal:7687",
+    "neo4j.database": "neo4j",
+    "neo4j.authentication.type": "BASIC",
+    "neo4j.authentication.basic.username": "neo4j",
+    "neo4j.authentication.basic.password": "REPLACE_WITH_LOCAL_NEO4J_PASSWORD",
+    "neo4j.cypher.topic.ais.positions": "WITH __value AS event MERGE (v:Vessel {mmsi: event.mmsi}) SET v.name = event.name, v.shipType = event.shipType, v.latitude = event.latitude, v.longitude = event.longitude, v.speedOverGround = event.speedOverGround, v.courseOverGround = event.courseOverGround, v.trueHeading = event.trueHeading, v.navigationalStatus = event.navigationalStatus, v.stream = event.stream, v.lastSeen = datetime(event.msgtime)"
+  }
+}

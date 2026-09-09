@@ -47,3 +47,7 @@ airflow/airflow.cfg
 *.sqlite
 *.db
 *.log
+
+# Local Neo4j connector configurations may contain credentials
+neo4j/connectors/*.json
+!neo4j/connectors/*.example.json
