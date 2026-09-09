@@ -167,27 +167,76 @@ SET v.name = event.name,
 
 It updates `name`, `shipType`, `latitude`, `longitude`, `speedOverGround`, `courseOverGround`, `trueHeading`, `navigationalStatus`, `stream`, and `lastSeen`. It does not create a `Position` node for every AIS event.
 
-## Manual Kafka test
+## Live AIS producer test
 
-Kafka 4.3 uses `--reader-property` for the console producer and `--formatter-property` for the console consumer. Do not use the deprecated `--property` option:
+The first live producer milestone reads the BarentsWatch Live AIS stream and publishes exactly 20 valid vessel messages to `ais.positions`, then exits. It is a one-shot test, not a continuous service.
 
-```sh
-# Terminal 1
-docker exec -i ais-kafka /opt/kafka/bin/kafka-console-consumer.sh \
-  --bootstrap-server localhost:29092 \
-  --topic ais.positions \
-  --from-beginning \
-  --formatter-property print.key=true \
-  --formatter-property key.separator=:
+1. Make sure the local infrastructure is running:
 
-# Terminal 2
-printf '257123456:{"mmsi":257123456,"name":"Test Vessel","latitude":69.65,"longitude":18.96,"msgtime":"2026-09-09T12:00:00Z"}\n' | \
-  docker exec -i ais-kafka /opt/kafka/bin/kafka-console-producer.sh \
-   --bootstrap-server localhost:29092 \
-   --topic ais.positions \
-   --reader-property parse.key=true \
-   --reader-property key.separator=:
-```
+  ```sh
+  ./scripts/start-local.sh
+  ```
+
+2. Make sure the Neo4j uniqueness constraint exists:
+
+  ```cypher
+  CREATE CONSTRAINT vessel_mmsi_unique IF NOT EXISTS
+  FOR (v:Vessel)
+  REQUIRE v.mmsi IS UNIQUE;
+  ```
+
+3. Put the BarentsWatch credentials in the local `.env` file. The file is ignored by Git and must never be committed:
+
+  ```dotenv
+  BW_AIS_CLIENT_ID=...
+  BW_AIS_CLIENT_SECRET=...
+  ```
+
+4. Install the producer dependencies:
+
+  ```sh
+  python3 -m pip install -r producers/ais/requirements.txt
+  ```
+
+5. Run the 20-message producer from the repository root:
+
+  ```sh
+  python3 producers/ais/producer.py
+  ```
+
+  It requests an OAuth client-credentials token with scope `ais`, reads the response as streaming NDJSON, preserves the original AIS JSON fields, and uses the event MMSI as the Kafka key.
+
+6. Verify Kafka messages with a Kafka 4.3-compatible consumer:
+
+  ```sh
+  docker exec -it ais-kafka /opt/kafka/bin/kafka-console-consumer.sh \
+    --bootstrap-server localhost:29092 \
+    --topic ais.positions \
+    --from-beginning \
+    --formatter-property print.key=true \
+    --formatter-property key.separator=:
+  ```
+
+7. Verify the vessels written by the Neo4j sink:
+
+  ```cypher
+  MATCH (v:Vessel)
+  RETURN
+     v.mmsi,
+     v.name,
+     v.latitude,
+     v.longitude,
+     v.speedOverGround,
+     v.lastSeen
+  ORDER BY v.lastSeen DESC;
+  ```
+
+  ```cypher
+  MATCH (v:Vessel)
+  RETURN count(v) AS vesselCount;
+  ```
+
+Twenty Kafka messages do not necessarily produce twenty `Vessel` nodes because the Neo4j sink merges by MMSI.
 
 ## Shutdown
 
