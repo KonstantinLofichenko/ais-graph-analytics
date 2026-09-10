@@ -6,7 +6,7 @@
     "key.converter": "org.apache.kafka.connect.storage.StringConverter",
     "value.converter": "org.apache.kafka.connect.json.JsonConverter",
     "value.converter.schemas.enable": "false",
-    "neo4j.uri": "bolt://host.docker.internal:7687",
+    "neo4j.uri": "bolt://neo4j:7687",
     "neo4j.database": "neo4j",
     "neo4j.authentication.type": "BASIC",
     "neo4j.authentication.basic.username": "neo4j",

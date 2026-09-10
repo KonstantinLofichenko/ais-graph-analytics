@@ -103,7 +103,32 @@ services:
     networks:
       - ais-network
 
+  neo4j:
+    image: neo4j:2026.07.1
+    container_name: ais-neo4j
+    environment:
+      NEO4J_AUTH: neo4j/${NEO4J_PASSWORD}
+      HEALTHCHECK_PASSWORD: ${NEO4J_PASSWORD}
+      NEO4J_PLUGINS: '["apoc","graph-data-science"]'
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    volumes:
+      - neo4j-data:/data
+      - neo4j-logs:/logs
+    healthcheck:
+      test: ["CMD-SHELL", "cypher-shell -u neo4j -p \"$${HEALTHCHECK_PASSWORD}\" 'RETURN 1' > /dev/null"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+    networks:
+      - ais-network
+
 networks:
   ais-network:
     name: ais-network
     driver: bridge
+
+volumes:
+  neo4j-data:
+  neo4j-logs:
