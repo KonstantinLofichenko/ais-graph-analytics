@@ -2,6 +2,28 @@
 CREATE DATABASE IF NOT EXISTS raw;
 
 
+-- Store every AIS observation as historical telemetry in ClickHouse.
+CREATE TABLE IF NOT EXISTS raw.ais_positions
+(
+    mmsi UInt32,
+    msgtime DateTime64(9, 'UTC'),
+    latitude Float64,
+    longitude Float64,
+    speed_over_ground Nullable(Float32),
+    course_over_ground Nullable(Float32),
+    true_heading Nullable(UInt16),
+    rate_of_turn Nullable(Float32),
+    navigational_status Nullable(UInt8),
+    ship_type Nullable(UInt16),
+    name Nullable(String),
+    stream Nullable(String),
+    ingested_at DateTime64(3, 'UTC') DEFAULT now64(3)
+)
+ENGINE = MergeTree
+PARTITION BY toYYYYMM(msgtime)
+ORDER BY (mmsi, msgtime);
+
+
 -- Read JSONEachRow AIS events directly from the Kafka topic.
 CREATE TABLE IF NOT EXISTS raw.ais_positions_kafka
 (
@@ -49,25 +71,3 @@ SELECT
     name,
     stream
 FROM raw.ais_positions_kafka;
-
-
--- Store every AIS observation as historical telemetry in ClickHouse.
-CREATE TABLE IF NOT EXISTS raw.ais_positions
-(
-    mmsi UInt32,
-    msgtime DateTime64(9, 'UTC'),
-    latitude Float64,
-    longitude Float64,
-    speed_over_ground Nullable(Float32),
-    course_over_ground Nullable(Float32),
-    true_heading Nullable(UInt16),
-    rate_of_turn Nullable(Float32),
-    navigational_status Nullable(UInt8),
-    ship_type Nullable(UInt16),
-    name Nullable(String),
-    stream Nullable(String),
-    ingested_at DateTime64(3, 'UTC') DEFAULT now64(3)
-)
-ENGINE = MergeTree
-PARTITION BY toYYYYMM(msgtime)
-ORDER BY (mmsi, msgtime);

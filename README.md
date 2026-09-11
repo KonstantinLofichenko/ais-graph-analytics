@@ -1,6 +1,6 @@
 # AIS Graph Analytics
 
-AIS Graph Analytics collects BarentsWatch Automatic Identification System (AIS) vessel positions, streams them through Kafka and Kafka Connect, and writes the current vessel state to Neo4j. Raw position history will eventually belong in ClickHouse.
+AIS Graph Analytics collects BarentsWatch Automatic Identification System (AIS) vessel positions, streams them through Kafka and Kafka Connect, writes the current vessel state to Neo4j, and stores complete raw position history in ClickHouse.
 
 ## Architecture
 
@@ -56,6 +56,45 @@ ORDER BY (mmsi, msgtime)
 ```
 
 The initialization file is [clickhouse/init/01_raw.sql](clickhouse/init/01_raw.sql). Init scripts normally run only when ClickHouse initializes a new data volume, so an existing volume must be validated or updated explicitly.
+
+## Kafka to ClickHouse streaming
+
+AIS events flow through the ClickHouse pipeline as follows:
+
+```text
+Kafka ais.positions
+  -> raw.ais_positions_kafka (Kafka Engine consumer interface)
+  -> raw.ais_positions_mv (field and timestamp transformation)
+  -> raw.ais_positions (durable MergeTree history)
+```
+
+The Kafka Engine table is a consumer interface, not persistent analytical storage. The materialized view maps the incoming camelCase AIS fields and parses `msgtime`; the MergeTree table stores every event durably. Neo4j is a separate Kafka consumer for graph entities and latest vessel state, so ClickHouse event counts and Neo4j `Vessel` counts are intentionally different.
+
+Useful validation queries:
+
+```sql
+SHOW TABLES FROM raw;
+
+SHOW CREATE TABLE raw.ais_positions_kafka;
+
+SHOW CREATE TABLE raw.ais_positions_mv;
+
+SELECT count()
+FROM raw.ais_positions;
+
+SELECT
+  count(DISTINCT mmsi) AS vessels,
+  count() AS events
+FROM raw.ais_positions;
+
+SELECT
+  mmsi,
+  count() AS event_count
+FROM raw.ais_positions
+GROUP BY mmsi
+HAVING event_count > 1
+ORDER BY event_count DESC;
+```
 
 ## Configuration
 
