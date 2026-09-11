@@ -1,6 +1,8 @@
+-- Create the raw database for immutable AIS source data.
 CREATE DATABASE IF NOT EXISTS raw;
 
 
+-- Read JSONEachRow AIS events directly from the Kafka topic.
 CREATE TABLE IF NOT EXISTS raw.ais_positions_kafka
 (
     mmsi UInt32,
@@ -29,6 +31,7 @@ SETTINGS
     kafka_num_consumers = 1;
 
 
+-- Convert source field names and event timestamps into the raw table schema.
 CREATE MATERIALIZED VIEW IF NOT EXISTS raw.ais_positions_mv
 TO raw.ais_positions
 AS
@@ -48,6 +51,7 @@ SELECT
 FROM raw.ais_positions_kafka;
 
 
+-- Store every AIS observation as historical telemetry in ClickHouse.
 CREATE TABLE IF NOT EXISTS raw.ais_positions
 (
     mmsi UInt32,
