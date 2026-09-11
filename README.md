@@ -39,6 +39,24 @@ The repository is organized by platform concern:
 
 Kafka advertises `ais-kafka:29092` to Docker services and `localhost:9092` to macOS. Kafka Connect mounts `./plugins` at `/usr/share/java/plugins`; the Neo4j connector JAR is manually stored there.
 
+## ClickHouse raw layer
+
+ClickHouse stores the complete historical AIS event stream in `raw.ais_positions`. Neo4j stores graph entities and the latest known vessel state; ClickHouse stores every AIS observation for historical and time-series analysis. The existing `ais` database remains unchanged, and staging and marts databases are not created yet.
+
+The raw table uses monthly event-time partitions:
+
+```sql
+PARTITION BY toYYYYMM(msgtime)
+```
+
+This keeps large historical datasets manageable by event month rather than ingestion month. Its primary access pattern is vessel movement over a time range, so it is sorted by:
+
+```sql
+ORDER BY (mmsi, msgtime)
+```
+
+The initialization file is [clickhouse/init/01_raw.sql](clickhouse/init/01_raw.sql). Init scripts normally run only when ClickHouse initializes a new data volume, so an existing volume must be validated or updated explicitly.
+
 ## Configuration
 
 Copy `.env.example` to `.env` and provide credentials only in your local environment:
