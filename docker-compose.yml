@@ -1,4 +1,19 @@
 services:
+  ais-producer:
+    build: ./producers/ais
+    profiles: ["live"]
+    env_file: .env
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: ais-kafka:29092
+      AIS_MESSAGE_LIMIT: "${AIS_MESSAGE_LIMIT:-}"
+    depends_on:
+      ais-kafka:
+        condition: service_healthy
+    restart: on-failure
+    stop_grace_period: 45s
+    networks:
+      - ais-network
+
   ais-kafka:
     image: apache/kafka:4.3.1
     container_name: ais-kafka

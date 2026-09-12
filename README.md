@@ -226,7 +226,7 @@ It updates `name`, `shipType`, `latitude`, `longitude`, `speedOverGround`, `cour
 
 ## Live AIS producer test
 
-The first live producer milestone reads the BarentsWatch Live AIS stream and publishes exactly 20 valid vessel messages to `ais.positions`, then exits. It is a one-shot test, not a continuous service.
+The producer runs continuously by default on macOS/Linux. Set `AIS_MESSAGE_LIMIT` to a positive integer for a bounded run; unset or empty means continuous. Existing `.env` files may still contain `AIS_MESSAGE_LIMIT=20`: remove it or use the explicit overrides below.
 
 1. Make sure the local infrastructure is running:
 
@@ -258,7 +258,7 @@ The first live producer milestone reads the BarentsWatch Live AIS stream and pub
 5. Run the 20-message producer from the repository root:
 
   ```sh
-  python3 producers/ais/producer.py
+  AIS_MESSAGE_LIMIT=20 python3 producers/ais/producer.py
   ```
 
   It requests an OAuth client-credentials token with scope `ais`, reads the response as streaming NDJSON, preserves the original AIS JSON fields, and uses the event MMSI as the Kafka key.
@@ -294,6 +294,63 @@ The first live producer milestone reads the BarentsWatch Live AIS stream and pub
   ```
 
 Twenty Kafka messages do not necessarily produce twenty `Vessel` nodes because the Neo4j sink merges by MMSI.
+
+## Continuous producer in Docker
+
+With the existing infrastructure and topic running:
+
+```sh
+AIS_MESSAGE_LIMIT= docker compose --profile live up -d --build --no-deps ais-producer
+docker compose logs --tail 30 -f ais-producer
+```
+
+The `live` profile keeps ordinary infrastructure startup from unexpectedly starting ingestion.
+The service reuses root `.env` at runtime and overrides Kafka to `ais-kafka:29092`.
+Its build context includes only the producer and requirements; credentials are never copied into the image.
+Do not share expanded `docker compose config` output, which can contain secrets.
+Airflow does not orchestrate this live service.
+
+For continuous local mode use `AIS_MESSAGE_LIMIT= python3 producers/ais/producer.py`.
+Ctrl-C stops the local producer. Stop Docker ingestion with:
+
+```sh
+docker compose stop ais-producer
+```
+
+Ctrl-C while following Docker logs only stops the log viewer.
+SIGINT/SIGTERM close HTTP work and flush Kafka with a 35-second deadline; Compose allows 45 seconds.
+The producer runs as a non-root user and restarts on failure, while a successful bounded run stays stopped.
+No data-arrival healthcheck is used: quiet upstream periods are not evidence of failure.
+
+OAuth uses `client_credentials` with scope `ais`. A fresh token is requested before `expires_in`
+elapses, including during an idle stream. A 401 triggers renewal; rejection of a fresh token
+fails clearly. Network errors, EOF, 429 and server errors reconnect with capped exponential
+backoff and jitter. Numeric Retry-After delays are honored up to 300 seconds.
+Permanent HTTP/configuration errors exit without logging credentials or response bodies.
+
+Records retain the original JSON fields and MMSI key. Only acknowledged deliveries count
+toward the limit. Kafka idempotence protects retries within a producer session; this is not
+end-to-end exactly-once delivery across restarts or upstream reconnects. Delivery failures
+stop the producer instead of silently skipping an event. The live API has no replay checkpoint,
+so outages/reconnects can leave gaps or repeat upstream events.
+
+For a bounded validation, stop other producers first, record Kafka partition end offsets,
+then run with `AIS_MESSAGE_LIMIT=20`. The sum of end offsets should increase by exactly 20:
+
+```sh
+docker exec ais-kafka /opt/kafka/bin/kafka-get-offsets.sh \
+  --bootstrap-server ais-kafka:29092 --topic ais.positions --time -1
+```
+
+Compare `SELECT count() FROM raw.ais_positions` before and after ingestion; allow consumer lag.
+In Neo4j compare `Vessel` properties and `lastSeen`, not just node count, because existing
+vessels are updated. The Kafka Connect sink and its tasks should remain `RUNNING`.
+
+Run deterministic lifecycle and failure tests without credentials:
+
+```sh
+python3 -m unittest discover -s producers/ais/tests -v
+```
 
 ## Shutdown
 
