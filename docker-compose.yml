@@ -162,12 +162,19 @@ services:
       - ais-network
 
   neo4j:
-    image: neo4j:2026.07.1
+    build:
+      context: ./neo4j
+      dockerfile: Dockerfile
+    image: ais-neo4j:2026.07.1-clickhouse-jdbc
     container_name: ais-neo4j
     environment:
       NEO4J_AUTH: neo4j/${NEO4J_PASSWORD}
       HEALTHCHECK_PASSWORD: ${NEO4J_PASSWORD}
-      NEO4J_PLUGINS: '["apoc","graph-data-science"]'
+      NEO4J_PLUGINS: '["apoc","apoc-extended","graph-data-science"]'
+      NEO4J_apoc_jdbc_clickhouse_url: jdbc:clickhouse:http://ais-clickhouse:8123/default?jdbc_ignore_unsupported_values=true
+      NEO4J_apoc_jdbc_clickhouse_user: ${CLICKHOUSE_USER:-default}
+      NEO4J_apoc_jdbc_clickhouse_password: ${CLICKHOUSE_PASSWORD}
+      NEO4J_dbms_security_procedures_unrestricted: apoc.load.jdbc,apoc.load.driver
     ports:
       - "7474:7474"
       - "7687:7687"
