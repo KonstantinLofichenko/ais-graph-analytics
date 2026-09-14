@@ -65,10 +65,39 @@ AIS events flow through the ClickHouse pipeline as follows:
 Kafka ais.positions
   -> raw.ais_positions_kafka (Kafka Engine consumer interface)
   -> raw.ais_positions_mv (field and timestamp transformation)
-  -> raw.ais_positions (durable MergeTree history)
+  -> raw.ais_positions (durable ReplacingMergeTree history)
 ```
 
-The Kafka Engine table is a consumer interface, not persistent analytical storage. The materialized view maps the incoming camelCase AIS fields and parses `msgtime`; the MergeTree table stores every event durably. Neo4j is a separate Kafka consumer for graph entities and latest vessel state, so ClickHouse event counts and Neo4j `Vessel` counts are intentionally different.
+The Kafka Engine table is a consumer interface, not persistent analytical storage. The materialized view maps the incoming camelCase AIS fields and parses `msgtime`; the ReplacingMergeTree table stores every event durably while converging duplicate versions. Neo4j is a separate Kafka consumer for graph entities and latest vessel state, so ClickHouse event counts and Neo4j `Vessel` counts are intentionally different.
+
+`raw.ais_positions` uses `ReplacingMergeTree(ingested_at)` so overlapping historical and live ingestion can converge to one logical event per `(mmsi, msgtime)`. Physical duplicate parts may exist temporarily before background merges; use `FINAL` when validating the logical view. The manual migration is [clickhouse/migrations/001_replacing_ais_positions.sql](clickhouse/migrations/001_replacing_ais_positions.sql). Pause AIS producers and ClickHouse Kafka ingestion before running it. It keeps the pre-migration table as `raw.ais_positions_merge_backup` and does not run automatically from Docker startup.
+
+Run the migration manually from the repository root after pausing producers and ClickHouse ingestion:
+
+```sh
+docker exec -i ais-clickhouse sh -c \
+  'clickhouse-client --user "$CLICKHOUSE_USER" --password "$CLICKHOUSE_PASSWORD" --multiquery' \
+  < clickhouse/migrations/001_replacing_ais_positions.sql
+```
+
+After migration, validate logical uniqueness with:
+
+```sql
+SELECT
+  count() AS physical_rows,
+  uniqExact((mmsi, msgtime)) AS logical_events
+FROM raw.ais_positions FINAL;
+
+SELECT
+  mmsi,
+  msgtime,
+  count()
+FROM raw.ais_positions
+GROUP BY mmsi, msgtime
+HAVING count() > 1
+ORDER BY count() DESC
+LIMIT 20;
+```
 
 Useful validation queries:
 
@@ -351,6 +380,24 @@ Run deterministic lifecycle and failure tests without credentials:
 ```sh
 python3 -m unittest discover -s producers/ais/tests -v
 ```
+
+## Port visits and graph summaries
+
+The Bergen pilot batch adds seven reference ports, infers visits from ClickHouse
+AIS history, and stores `(Vessel)-[:VISITED {visitCount}]->(Port)` summaries in Neo4j.
+Individual visits remain in ClickHouse; existing live Vessel properties are preserved.
+
+```sh
+.venv/bin/python -m pip install -r pipelines/port_visits/requirements.txt
+.venv/bin/python pipelines/port_visits/run.py                 # read-only preview
+.venv/bin/python pipelines/port_visits/run.py --apply --init  # first publication
+```
+
+See [the port-visit workflow](pipelines/port_visits/README.md) for thresholds,
+reproducible windows, validation, retry behavior, and data limitations.
+This milestone prepares the graph for GDS; similarity is not yet added.
+A dedicated two-task Airflow DAG now downloads ports and runs this batch. See
+[Airflow setup and usage](airflow/README.md).
 
 ## Shutdown
 

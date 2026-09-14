@@ -1,0 +1,15 @@
+**
+!airflow/
+!airflow/Dockerfile
+!airflow/dags/
+!airflow/dags/*.py
+!pipelines/
+!pipelines/port_visits/
+!pipelines/port_visits/*.py
+!pipelines/port_visits/requirements.txt
+!pipelines/historic_ais/
+!pipelines/historic_ais/*.py
+!pipelines/historic_ais/requirements.txt
+!clickhouse/
+!clickhouse/init/
+!clickhouse/init/02_port_visits.sql

@@ -19,7 +19,7 @@ CREATE TABLE IF NOT EXISTS raw.ais_positions
     stream Nullable(String),
     ingested_at DateTime64(3, 'UTC') DEFAULT now64(3)
 )
-ENGINE = MergeTree
+ENGINE = ReplacingMergeTree(ingested_at)
 PARTITION BY toYYYYMM(msgtime)
 ORDER BY (mmsi, msgtime);
 

@@ -51,3 +51,6 @@ airflow/airflow.cfg
 # Local Neo4j connector configurations may contain credentials
 neo4j/connectors/*.json
 !neo4j/connectors/*.example.json
+
+# Local batch lock and validation reports
+pipelines/port_visits/.run.lock

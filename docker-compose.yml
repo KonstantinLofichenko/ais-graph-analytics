@@ -1,4 +1,47 @@
 services:
+  airflow:
+    build:
+      context: .
+      dockerfile: airflow/Dockerfile
+    container_name: ais-airflow
+    profiles: ["batch"]
+    command: standalone
+    environment:
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      AIRFLOW__CORE__DAGS_FOLDER: /opt/ais/airflow/dags
+      AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_USERS: "admin:admin"
+      AIRFLOW__CORE__PARALLELISM: "1"
+      CLICKHOUSE_URL: http://ais-clickhouse:8123
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-default}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD}
+      BW_AIS_CLIENT_ID: ${BW_AIS_CLIENT_ID}
+      BW_AIS_CLIENT_SECRET: ${BW_AIS_CLIENT_SECRET}
+      BW_TOKEN_URL: ${BW_TOKEN_URL}
+      BW_HISTORIC_BASE_URL: ${BW_HISTORIC_BASE_URL:-https://historic.ais.barentswatch.no}
+      BW_HISTORIC_SCOPE: ${BW_HISTORIC_SCOPE:-ais}
+      BW_HISTORIC_WINDOW_HOURS: ${BW_HISTORIC_WINDOW_HOURS:-24}
+      BW_HISTORIC_BATCH_SIZE: ${BW_HISTORIC_BATCH_SIZE:-5000}
+      BW_HISTORIC_REQUEST_TIMEOUT_SECONDS: ${BW_HISTORIC_REQUEST_TIMEOUT_SECONDS:-60}
+      BW_HISTORIC_POLYGON_JSON: ${BW_HISTORIC_POLYGON_JSON}
+      NEO4J_URI: bolt://ais-neo4j:7687
+      NEO4J_USER: neo4j
+      NEO4J_PASSWORD: ${NEO4J_PASSWORD}
+      NEO4J_DATABASE: neo4j
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - airflow-data:/opt/airflow
+    restart: unless-stopped
+    stop_grace_period: 60s
+    healthcheck:
+      test: ["CMD-SHELL", "airflow jobs check --job-type SchedulerJob --local > /dev/null 2>&1"]
+      interval: 30s
+      timeout: 15s
+      start_period: 90s
+      retries: 5
+    networks:
+      - ais-network
+
   ais-producer:
     build: ./producers/ais
     profiles: ["live"]
@@ -171,6 +214,7 @@ networks:
     driver: bridge
 
 volumes:
+  airflow-data:
   neo4j-data:
   neo4j-logs:
   clickhouse-data:

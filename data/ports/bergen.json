@@ -1,0 +1,58 @@
+[
+  {
+    "port_id": "WPI:23138",
+    "name": "MONGSTAD",
+    "country": "NO",
+    "latitude": 60.816667,
+    "longitude": 5.033333,
+    "radius_m": 1500
+  },
+  {
+    "port_id": "WPI:23139",
+    "name": "STURA",
+    "country": "NO",
+    "latitude": 60.616667,
+    "longitude": 4.85,
+    "radius_m": 1500
+  },
+  {
+    "port_id": "WPI:23140",
+    "name": "VAKSDAL",
+    "country": "NO",
+    "latitude": 60.483333,
+    "longitude": 5.733333,
+    "radius_m": 1500
+  },
+  {
+    "port_id": "WPI:23160",
+    "name": "BERGEN",
+    "country": "NO",
+    "latitude": 60.4,
+    "longitude": 5.316667,
+    "radius_m": 1500
+  },
+  {
+    "port_id": "WPI:23180",
+    "name": "BRATTHOLMEN",
+    "country": "NO",
+    "latitude": 60.35,
+    "longitude": 5.166667,
+    "radius_m": 1500
+  },
+  {
+    "port_id": "WPI:23195",
+    "name": "TRANNESET",
+    "country": "NO",
+    "latitude": 60.416667,
+    "longitude": 5.016667,
+    "radius_m": 1500
+  },
+  {
+    "port_id": "WPI:23220",
+    "name": "STRANDVIK",
+    "country": "NO",
+    "latitude": 60.166667,
+    "longitude": 5.666667,
+    "radius_m": 1500
+  }
+]
