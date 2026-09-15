@@ -10,6 +10,14 @@ from run import ClickHouse, batch_id, enforce_row_limit
 START = datetime(2026, 9, 14, 8, tzinfo=timezone.utc)
 END = datetime(2026, 9, 15, 8, tzinfo=timezone.utc)
 
+DATASET_HASH = 'test-port-dataset'
+
+PARAMETERS = {
+    'version': 'port-visits-v1',
+    'min_stay': 1200,
+    'max_gap': 900,
+    'max_speed': 3,
+}
 
 class EnforceRowLimitTests(unittest.TestCase):
     def test_below_limit_proceeds(self):
@@ -24,21 +32,38 @@ class EnforceRowLimitTests(unittest.TestCase):
 
 
 class BatchIdTests(unittest.TestCase):
+
     def test_same_window_same_id(self):
-        self.assertEqual(batch_id(START, END), batch_id(START, END))
+        self.assertEqual(
+            batch_id(START, END, DATASET_HASH, PARAMETERS),
+            batch_id(START, END, DATASET_HASH, PARAMETERS),
+        )
 
     def test_same_window_different_timezone_representation_same_id(self):
-        # +00:00 and an equivalent offset must normalize to the same UTC identity.
-        start_plus_one = datetime(2026, 9, 14, 9, tzinfo=timezone(timedelta(hours=1)))
-        self.assertEqual(batch_id(START, END), batch_id(start_plus_one, END))
+        start_plus_one = datetime(
+            2026, 9, 14, 9,
+            tzinfo=timezone(timedelta(hours=1)),
+        )
+
+        self.assertEqual(
+            batch_id(START, END, DATASET_HASH, PARAMETERS),
+            batch_id(start_plus_one, END, DATASET_HASH, PARAMETERS),
+        )
 
     def test_different_window_different_id(self):
         other_end = datetime(2026, 9, 16, 8, tzinfo=timezone.utc)
-        self.assertNotEqual(batch_id(START, END), batch_id(START, other_end))
+
+        self.assertNotEqual(
+            batch_id(START, END, DATASET_HASH, PARAMETERS),
+            batch_id(START, other_end, DATASET_HASH, PARAMETERS),
+        )
 
     def test_repeated_publishing_of_same_batch_is_idempotent(self):
-        # No wall-clock/row-count input, so re-invoking for the same window is deterministic.
-        ids = {batch_id(START, END) for _ in range(3)}
+        ids = {
+            batch_id(START, END, DATASET_HASH, PARAMETERS)
+            for _ in range(3)
+        }
+
         self.assertEqual(len(ids), 1)
 
 

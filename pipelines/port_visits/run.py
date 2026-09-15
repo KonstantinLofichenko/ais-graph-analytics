@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 import sys
+from tracemalloc import start
 
 import requests
 from dotenv import load_dotenv
@@ -90,10 +91,15 @@ def enforce_row_limit(actual_rows, max_rows):
         raise RuntimeError(f'Input row count {actual_rows:,} exceeds safety limit {max_rows:,}')
 
 
-def batch_id(start, end):
-    # Identity of an explicit window: version + normalized UTC bounds only, never wall-clock
-    # or fetched rows, so retrying the same window always resolves to the same logical batch.
-    return digest([OWNER, start.astimezone(timezone.utc).isoformat(), end.astimezone(timezone.utc).isoformat()])
+def batch_id(start, end, dataset_hash, parameters):
+    """Deterministic identity of one logical port-visit computation."""
+    return digest([
+        OWNER,
+        start.astimezone(timezone.utc).isoformat(),
+        end.astimezone(timezone.utc).isoformat(),
+        dataset_hash,
+        parameters,
+    ])
 
 
 def graph_snapshot(tx, ports, counts, run_id, start, end):
@@ -121,9 +127,8 @@ def graph_snapshot(tx, ports, counts, run_id, start, end):
            start=start.isoformat(), end=end.isoformat()).consume()
 
 
-def publish(ch, ports, visits, counts, run_id, start, end, parameters, stats):
+def publish(ch, ports, visits, counts, run_id, dataset_hash, start, end, parameters, stats):
     now = datetime.now(timezone.utc)
-    dataset_hash = digest(ports)
     with GraphDatabase.driver(os.getenv('NEO4J_URI', 'bolt://localhost:7687'),
                               auth=(os.getenv('NEO4J_USER', 'neo4j'), os.environ['NEO4J_PASSWORD'])) as driver:
         driver.verify_connectivity()
@@ -179,8 +184,16 @@ def main():
             enforce_row_limit(actual_rows, args.max_rows)
             rows = ch.positions(start, end, args.max_rows)
             visits, stats = detect(rows, ports, **{k: v for k, v in parameters.items() if k != 'version'})
+
             counts = summaries(visits)
-            run_id = batch_id(start, end)
+            dataset_hash = digest(ports)
+            run_id = batch_id(
+                start,
+                end,
+                dataset_hash,
+                parameters,
+            )
+
             report = dict(run_id=run_id, mode='apply' if args.apply else 'preview',
                           window_start=start, window_end=end, ports=len(ports), parameters=parameters,
                           actual_rows=actual_rows, statistics=stats, relationships=len(counts),
@@ -188,7 +201,7 @@ def main():
             if args.apply:
                 if args.init:
                     ch.initialize()
-                publish(ch, ports, visits, counts, run_id, start, end, parameters, stats)
+                publish(ch, ports, visits, counts, run_id, dataset_hash, start, end, parameters, stats)
             if args.result_json:
                 args.result_json.write_text(json.dumps(dict(
                     run_id=run_id, window_start=start.isoformat(), window_end=end.isoformat()))+'\n')

@@ -7,6 +7,9 @@ import math
 import re
 
 
+GRID_SIZE_DEG = 0.1
+
+
 def digest(value):
     return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(',', ':'), default=str).encode()).hexdigest()
 
@@ -39,6 +42,58 @@ def validate_ports(ports):
                 raise ValueError('Invalid port ' + field)
 
 
+def grid_cell(latitude, longitude):
+    """Return deterministic spatial-grid coordinates for one point."""
+    return (
+        math.floor(latitude / GRID_SIZE_DEG),
+        math.floor(longitude / GRID_SIZE_DEG),
+    )
+
+
+def build_port_grid(ports):
+    """Index ports by geographic grid cell."""
+    grid = {}
+
+    for port in ports:
+        cell = grid_cell(port['latitude'], port['longitude'])
+        grid.setdefault(cell, []).append(port)
+
+    # Stable ordering keeps detection deterministic.
+    for cell in grid:
+        grid[cell] = sorted(grid[cell], key=lambda port: port['port_id'])
+
+    return grid
+
+
+def nearby_ports(latitude, longitude, grid, max_radius_m):
+    """Return ports from grid cells that could contain a port within max_radius_m."""
+    lat_cell, lon_cell = grid_cell(latitude, longitude)
+
+    # Conservative metres-per-degree estimates.
+    # Using 100 km rather than ~111 km intentionally searches a slightly
+    # wider region so the prefilter cannot exclude a valid nearby port.
+    lat_m_per_degree = 100_000.0
+
+    cos_lat = abs(math.cos(math.radians(latitude)))
+    lon_m_per_degree = max(100_000.0 * cos_lat, 1_000.0)
+
+    lat_span = math.ceil(max_radius_m / (lat_m_per_degree * GRID_SIZE_DEG)) + 1
+    lon_span = math.ceil(max_radius_m / (lon_m_per_degree * GRID_SIZE_DEG)) + 1
+
+    candidates = []
+
+    for lat_offset in range(-lat_span, lat_span + 1):
+        for lon_offset in range(-lon_span, lon_span + 1):
+            candidates.extend(
+                grid.get(
+                    (lat_cell + lat_offset, lon_cell + lon_offset),
+                    (),
+                )
+            )
+
+    return candidates
+
+
 def detect(rows, ports, min_stay=1200, max_gap=900, max_speed=3.0):
     """Require a continuous sequence of low-speed observations inside a port circle.
 
@@ -50,6 +105,8 @@ def detect(rows, ports, min_stay=1200, max_gap=900, max_speed=3.0):
     if not all(math.isfinite(v) for v in (min_stay, max_gap, max_speed)) or min_stay <= 0 or max_gap <= 0 or max_speed < 0:
         raise ValueError('Invalid detection thresholds')
     radii = {p['port_id']: p['radius_m'] for p in ports}
+    port_grid = build_port_grid(ports)
+    max_port_radius = max(radii.values())
     stats = Counter(source_rows=len(rows))
     groups = {}
     for row in rows:
@@ -98,7 +155,17 @@ def detect(rows, ports, min_stay=1200, max_gap=900, max_speed=3.0):
             finish('window_end')
         elif gap:
             finish('data_gap')
-        candidates = [] if lat is None else [(distance_m(lat, lon, p), p['port_id']) for p in ports]
+
+        candidate_ports = (
+            []
+            if lat is None
+            else nearby_ports(lat, lon, port_grid, max_port_radius)
+        )
+        candidates = [
+            (distance_m(lat, lon, port), port['port_id'])
+            for port in candidate_ports
+        ]
+
         inside = sorted((d, pid) for d, pid in candidates if d <= radii[pid])
         port_id = inside[0][1] if inside else None
         eligible = port_id if speed is not None and speed <= max_speed else None

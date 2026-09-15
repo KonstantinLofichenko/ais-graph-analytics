@@ -44,16 +44,46 @@ class RunMetadataTests(unittest.TestCase):
     def test_completed_metadata_reuses_published_id_and_normalized_window(self):
         first_publish = self.invoke()
         first = json.loads(self.result.read_text())
+
         second_publish = self.invoke()
         second = json.loads(self.result.read_text())
+
         start = datetime(2026, 9, 14, 8, tzinfo=timezone.utc)
         end = datetime(2026, 9, 15, 8, tzinfo=timezone.utc)
-        expected = dict(run_id=run.batch_id(start, end),
-                        window_start=start.isoformat(), window_end=end.isoformat())
+
+        ports = json.loads(self.ports.read_text())
+
+        dataset_hash = run.digest(ports)
+
+        parameters = {
+            'version': run.OWNER,
+            'min_stay': 1200,
+            'max_gap': 900,
+            'max_speed': 3,
+        }
+
+        expected = dict(
+            run_id=run.batch_id(
+                start,
+                end,
+                dataset_hash,
+                parameters,
+            ),
+            window_start=start.isoformat(),
+            window_end=end.isoformat(),
+        )
+
         self.assertEqual(first, expected)
         self.assertEqual(second, expected)
+
         for publish in (first_publish, second_publish):
-            self.assertEqual(publish.call_args.args[4:7], (expected['run_id'], start, end))
+            args = publish.call_args.args
+
+            self.assertEqual(args[4], expected['run_id'])
+            self.assertEqual(args[5], dataset_hash)
+            self.assertEqual(args[6:8], (start, end))
+            self.assertEqual(args[8], parameters)
+
         self.assertLess(self.result.stat().st_size, 256)
 
     def test_failed_publication_does_not_emit_completed_metadata(self):
