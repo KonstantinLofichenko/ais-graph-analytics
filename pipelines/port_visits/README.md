@@ -2,9 +2,11 @@
 
 This batch reads existing ClickHouse AIS history, infers separate visits, stores
 versioned visit snapshots in ClickHouse, and refreshes vessel–port counts in Neo4j.
-It does not change the producer, Kafka consumers, or current Vessel properties.
-GDS similarity is a subsequent milestone. Airflow orchestration is the next
-milestone; the batch can currently be run directly with `run.py`.
+The [Airflow DAG](../../airflow/README.md) then publishes port-to-port movements in
+a separate `publish_port_connections` task. The visit batch can also be run directly
+with `run.py`; that command publishes `VISITED` only. It does not change the producer,
+Kafka consumers, or current Vessel properties. GDS similarity is a subsequent
+milestone.
 
 ## Run from the repository root
 
@@ -36,10 +38,18 @@ Use fixed UTC boundaries for reproducible previews/retries (start inclusive, end
 
 Add `--apply` after inspecting the report. Without fixed boundaries, every run uses
 an updated window. A 30-day window does not mean we have 30 days of collected data.
-The job refuses to silently truncate beyond `--max-rows` (default 500,000). This
-small pilot sorts/loads a bounded input into memory and is not yet a full-volume
+Before loading any rows, the job counts them with `count() ... FINAL` for the exact
+window and logs `actual_rows` (the automatically measured input size). `--max-rows`
+(default 500,000) is a hard safety ceiling, not the requested batch size: the job
+fails immediately, before fetching the full dataset, if `actual_rows` exceeds it.
+This small pilot sorts/loads a bounded input into memory and is not yet a full-volume
 production AIS processor. Narrow the window when needed; scaling requires moving
 candidate selection/sessionization into ClickHouse or a streaming batch reader.
+
+The published `run_id` is derived only from the pipeline version and the normalized
+UTC `start`/`end`, never from wall-clock time or the fetched rows. Repeating the
+exact same window is therefore idempotent: it updates the same ClickHouse snapshot
+and Neo4j `VISITED` summary rather than creating a logically duplicate batch.
 
 ## Reference and detection rules
 
@@ -87,10 +97,11 @@ ClickHouse (`analytics` database):
 
 An older run's visits remain available for inspection. Do not sum visits across
 runs: overlapping snapshots can represent the same underlying stay. The run ID
-hashes the window, source rows, reference, and detector version/settings. Repeating
-the same inputs uses the same IDs. ReplacingMergeTree plus `FINAL` gives one logical
-row per key even before background merges. Increment `OWNER`'s version when changing
-detection semantics. Empty runs are recorded and clear the current managed summary.
+depends only on the pipeline version and normalized UTC window bounds. Source rows,
+reference records and detector settings do not create a new run identity for the
+same version/window. ReplacingMergeTree plus `FINAL` gives one logical row per key
+even before background merges. Increment `OWNER`'s version when changing detection
+semantics. Empty runs are recorded and clear the current managed summary.
 
 Neo4j:
 
@@ -98,8 +109,14 @@ Neo4j:
 (Vessel {mmsi})-[:VISITED {
   visitCount, managedBy, runId, windowStart, windowEnd
 }]->(Port {portId, name, country, latitude, longitude, radiusM})
+
+(Port {portId})-[:CONNECTED_TO {
+  movementCount, vesselCount, firstSeen, lastSeen,
+  managedBy, runId, windowStart, windowEnd
+}]->(Port {portId})
 ```
 
+`VISITED` aggregates the number of detected visits from a Vessel to a Port.
 Only `VISITED` edges owned by `port-visits-v1` are replaced, in one transaction.
 The batch never sets existing Vessel position/name properties. Historical vessels
 missing from the live graph may be created with MMSI only. Ports retain reference
@@ -108,14 +125,40 @@ Old Port nodes/reference rows remain if a later reference omits them, but their
 managed visit edges are removed. Port fields use `portId`; vessel IDs remain integer
 `mmsi`, matching the Kafka sink. There are no `PortVisit` nodes.
 
+### Consecutive port connections
+
+`pipelines/port_connections/run.py` reads `analytics.port_visits FINAL` for the exact
+completed visit `run_id` passed by the upstream task and validates its completed-run
+metadata. It does not combine historical runs or select whichever run is latest.
+If the completed run's `visit_count` differs from its `FINAL` visit rows, publishing
+fails before touching Neo4j.
+Each vessel's visits are ordered by `arrival_at`, then `visit_id` and `port_id` to
+resolve ties deterministically. Only adjacent visits form movements: A → B → C
+produces A → B and B → C. Adjacent visits to the same port are ignored.
+
+For each directed route, `movementCount` counts movements, `vesselCount` counts
+distinct MMSIs, `firstSeen` is the earliest source visit's `arrival_at`, and
+`lastSeen` is the latest destination visit's `arrival_at`. `CONNECTED_TO` means
+“the next detected port visit was this port.” It does not prove that no unobserved
+port was visited in between.
+
+Publishing atomically replaces the current snapshot of Port-to-Port `CONNECTED_TO`
+relationships owned by `port-connections-v1`, including those from earlier runs.
+The publisher matches existing Ports by `portId` and fails before deleting anything
+if a referenced Port is missing. It creates no Port nodes. Relationship `MERGE`
+includes `managedBy`, preserving manually created relationships on the same route.
+An empty valid run clears the owned connections. `VISITED` and relationships with
+other ownership are unaffected. The connections reuse the visit run's `runId`,
+`windowStart`, and `windowEnd`; no separate batch identity is generated.
+
 For future port similarity, GDS must project Port-to-Vessel neighborhoods (reverse
 the stored VISITED direction); that algorithm is not run in this milestone.
 
 ## Failure and retry behavior
 
 Run one writer at a time from this checkout. A local file lock prevents overlapping
-local runs; it is not a distributed lock. When Airflow orchestration is enabled, it
-must enforce one active run and preserve the same single-writer restriction.
+local visit runs; it is not a distributed lock. Airflow enforces one active DAG run
+and one running task. Do not run host publishers concurrently with the DAG.
 
 Writes occur in this order: ClickHouse reference/visits → atomic Neo4j refresh →
 ClickHouse completed-run record. There is no cross-database transaction. If a failure
@@ -124,6 +167,15 @@ latest completed run. Rerun with the same explicit window and unchanged inputs t
 reconcile. Partial ClickHouse snapshots without a completed run are not exposed by
 the current view. Check run IDs before downstream similarity/export work.
 
+Airflow starts connection publishing only after the visit task succeeds, passing
+only `run_id`, `window_start`, and `window_end` through XCom. The visit subprocess
+writes this small completed result to a temporary `--result-json` file for its task
+to read. The two tasks' graph writes are not atomic together: if connection
+publishing fails, `VISITED` may already show the new run while `CONNECTED_TO` still
+shows the previous snapshot. Retry `publish_port_connections` with the same metadata
+to reconcile; its transaction preserves the previous connections if publishing
+fails before commit.
+
 A manually applied older window intentionally becomes the current graph snapshot;
 there is no implicit chronological scheduling yet.
 
@@ -131,6 +183,8 @@ there is no implicit chronological scheduling yet.
 
 ```sh
 .venv/bin/python -m unittest discover -s pipelines/port_visits/tests -v
+.venv/bin/python -m unittest discover -s pipelines/port_connections/tests -v
+.venv/bin/python -m unittest discover -s airflow/tests -v
 # Opt-in DB integration: creates/drops its own temporary database;
 # all synthetic Neo4j changes are rolled back.
 .venv/bin/python pipelines/port_visits/tests/integration_check.py
@@ -147,6 +201,9 @@ SELECT * FROM analytics.current_port_visits ORDER BY mmsi, arrival_at;
 MATCH (p:Port) RETURN p.portId, p.name, p.visitRunId;
 MATCH (v:Vessel)-[r:VISITED {managedBy:'port-visits-v1'}]->(p:Port)
 RETURN v.mmsi, p.name, r.visitCount, r.windowStart, r.windowEnd;
+MATCH (a:Port)-[r:CONNECTED_TO {managedBy:'port-connections-v1'}]->(b:Port)
+RETURN a.portId, b.portId, r.movementCount, r.vesselCount,
+       r.firstSeen, r.lastSeen, r.runId, r.windowStart, r.windowEnd;
 ```
 
 Initial validation on 2026-09-12: 3,124 raw positions; 43 positions inside pilot
@@ -161,8 +218,8 @@ Neo4j ports use `createdAt` and `updatedAt`. ClickHouse uses `created_at` and
 `updated_at`, following the existing snake_case convention. Creation is preserved
 on reload; update time advances on every port load, even if attributes are unchanged.
 Run with `--apply --init` once to add the ClickHouse creation column to older installs.
-When Airflow orchestration is introduced, its initialization step should preserve
-this migration behavior. For legacy rows, creation is the
+Airflow runs with `--apply` against initialized tables; run this migration before
+using an older database with the DAG. For legacy rows, creation is the
 earliest retained ClickHouse update timestamp. For existing Neo4j nodes without a
 creation timestamp, creation is initialized at migration/load time. These backfills
 cannot recover original creation times that were never recorded.

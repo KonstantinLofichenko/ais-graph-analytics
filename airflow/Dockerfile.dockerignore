@@ -7,6 +7,8 @@
 !pipelines/port_visits/
 !pipelines/port_visits/*.py
 !pipelines/port_visits/requirements.txt
+!pipelines/port_connections/
+!pipelines/port_connections/*.py
 !pipelines/historic_ais/
 !pipelines/historic_ais/*.py
 !pipelines/historic_ais/requirements.txt

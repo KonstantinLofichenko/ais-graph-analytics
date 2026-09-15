@@ -12,7 +12,10 @@ import requests
 from dotenv import load_dotenv
 from neo4j import GraphDatabase
 
-from detect import detect, digest, summaries, timestamp, validate_ports
+if __package__:
+    from .detect import detect, digest, summaries, timestamp, validate_ports
+else:
+    from detect import detect, digest, summaries, timestamp, validate_ports
 
 ROOT = Path(__file__).resolve().parents[2]
 OWNER = 'port-visits-v1'
@@ -32,7 +35,7 @@ class ClickHouse:
         response = self.session.post(self.url, params={'wait_end_of_query': '1', **(params or {})},
                                      data=sql.encode(), timeout=(10, 120))
         if not response.ok:
-            raise RuntimeError(f'ClickHouse query failed (HTTP {response.status_code}); check server logs')
+            raise RuntimeError(f'ClickHouse query failed (HTTP {response.status_code}):\n{response.text[:2000]}')
         return response.text
 
     def insert(self, table, rows):
@@ -56,11 +59,19 @@ class ClickHouse:
             if statement.strip():
                 self.query(statement)
 
+    def count_positions(self, start, end):
+        # Same FINAL/window predicate as positions(); measured before loading any rows.
+        sql = '''SELECT count() AS actual_rows FROM raw.ais_positions FINAL
+                 WHERE msgtime >= {start:DateTime64(6, 'UTC')}
+                   AND msgtime < {end:DateTime64(6, 'UTC')} FORMAT JSONEachRow'''
+        data = self.query(sql, {'param_start': date_string(start), 'param_end': date_string(end)})
+        return int(json.loads(data.splitlines()[0])['actual_rows'])
+
     def positions(self, start, end, max_rows):
         # Include outside positions so exits are detectable. Never truncate silently.
         sql = '''SELECT mmsi, toString(msgtime, 'UTC') AS msgtime, latitude, longitude,
                         speed_over_ground
-                 FROM raw.ais_positions AS source
+                 FROM raw.ais_positions AS source FINAL
                  WHERE source.msgtime >= {start:DateTime64(6, 'UTC')}
                    AND source.msgtime < {end:DateTime64(6, 'UTC')}
                  ORDER BY mmsi, msgtime, latitude, longitude, speed_over_ground
@@ -71,6 +82,18 @@ class ClickHouse:
         if len(rows) > max_rows:
             raise RuntimeError('Input exceeds --max-rows; narrow the window or explicitly raise the limit')
         return rows
+
+
+def enforce_row_limit(actual_rows, max_rows):
+    # A hard safety ceiling, never auto-raised to actual_rows: catches unexpectedly wide windows.
+    if actual_rows > max_rows:
+        raise RuntimeError(f'Input row count {actual_rows:,} exceeds safety limit {max_rows:,}')
+
+
+def batch_id(start, end):
+    # Identity of an explicit window: version + normalized UTC bounds only, never wall-clock
+    # or fetched rows, so retrying the same window always resolves to the same logical batch.
+    return digest([OWNER, start.astimezone(timezone.utc).isoformat(), end.astimezone(timezone.utc).isoformat()])
 
 
 def graph_snapshot(tx, ports, counts, run_id, start, end):
@@ -125,12 +148,17 @@ def main():
     parser.add_argument('--max-gap-minutes', type=float, default=15)
     parser.add_argument('--max-speed-knots', type=float, default=3)
     parser.add_argument('--max-rows', type=int, default=500000)
+    parser.add_argument('--max-rows-source', default='cli', help='Label for how --start/--end/--max-rows were resolved (logging only)')
     parser.add_argument('--apply', action='store_true', help='Write ClickHouse snapshots and refresh managed graph summaries')
     parser.add_argument('--init', action='store_true', help='Create additive ClickHouse objects; requires --apply')
     parser.add_argument('--report', type=Path, help='Write a JSON preview/report to this file')
+    parser.add_argument('--result-json', type=Path,
+                        help='Write small completed-run metadata for Airflow; requires --apply')
     args = parser.parse_args()
     if args.init and not args.apply:
         parser.error('--init requires --apply')
+    if args.result_json and not args.apply:
+        parser.error('--result-json requires --apply')
     end = timestamp(args.end) if args.end else datetime.now(timezone.utc)
     start = timestamp(args.start) if args.start else end-timedelta(days=30)
     if start >= end or args.max_rows < 1:
@@ -145,17 +173,25 @@ def main():
         # Lock preview too: one local pipeline run at a time. No distributed scheduler yet.
         with (ROOT / 'pipelines/port_visits/.run.lock').open('w') as lock:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            actual_rows = ch.count_positions(start, end)
+            print(f'Port visit input: start={start.isoformat()} end={end.isoformat()} '
+                  f'actual_rows={actual_rows} max_rows={args.max_rows} source={args.max_rows_source}')
+            enforce_row_limit(actual_rows, args.max_rows)
             rows = ch.positions(start, end, args.max_rows)
             visits, stats = detect(rows, ports, **{k: v for k, v in parameters.items() if k != 'version'})
             counts = summaries(visits)
-            run_id = digest([start, end, ports, parameters, rows])
+            run_id = batch_id(start, end)
             report = dict(run_id=run_id, mode='apply' if args.apply else 'preview',
                           window_start=start, window_end=end, ports=len(ports), parameters=parameters,
-                          statistics=stats, relationships=len(counts), visits=visits, summaries=counts)
+                          actual_rows=actual_rows, statistics=stats, relationships=len(counts),
+                          visits=visits, summaries=counts)
             if args.apply:
                 if args.init:
                     ch.initialize()
                 publish(ch, ports, visits, counts, run_id, start, end, parameters, stats)
+            if args.result_json:
+                args.result_json.write_text(json.dumps(dict(
+                    run_id=run_id, window_start=start.isoformat(), window_end=end.isoformat()))+'\n')
             if args.report:
                 args.report.parent.mkdir(parents=True, exist_ok=True)
                 args.report.write_text(json.dumps(report, default=date_string, indent=2)+'\n')

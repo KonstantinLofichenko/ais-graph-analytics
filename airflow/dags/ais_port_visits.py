@@ -1,4 +1,4 @@
-"""Two-task manual workflow. The live AIS producer remains independent."""
+"""Manual port visits and consecutive-port connections workflow."""
 from datetime import datetime, timedelta, timezone
 from airflow.sdk import dag, task, get_current_context
 
@@ -18,22 +18,43 @@ def ais_port_visits():
     @task(execution_timeout=timedelta(minutes=15))
     def run_port_visit_pipeline(ports):
         import json
+        import os
         import subprocess
         import sys
         import tempfile
         from pathlib import Path
+
+        sys.path.insert(0, '/opt/ais/airflow/dags')
+        from ais_port_visits_window import resolve_window
+
         context = get_current_context()
-        # Run start time is fixed across retries; use a trailing 30-day window.
-        end = context['dag_run'].start_date
-        start = end - timedelta(days=30)
+        # Explicit dag_run.conf start/end/max_rows override the rolling default;
+        # the rolling default still uses dag_run.start_date so retries stay deterministic.
+        start, end, max_rows, source = resolve_window(
+            context['dag_run'].conf, context['dag_run'].start_date,
+            os.environ.get('PORT_VISITS_WINDOW_HOURS'), os.environ.get('PORT_VISITS_MAX_ROWS'))
+        print(f'Port visit window: start={start.isoformat()} end={end.isoformat()} '
+              f'max_rows={max_rows} source={source}')
         with tempfile.TemporaryDirectory() as directory:
             reference = Path(directory) / 'ports.json'
+            result = Path(directory) / 'result.json'
             reference.write_text(json.dumps(ports))
             subprocess.run([sys.executable, '/opt/ais/pipelines/port_visits/run.py',
                             '--ports', str(reference), '--start', start.isoformat(),
-                            '--end', end.isoformat(), '--apply'], check=True)
+                            '--end', end.isoformat(), '--max-rows', str(max_rows),
+                            '--max-rows-source', source, '--apply',
+                            '--result-json', str(result)], check=True)
+            # Only the successful batch's ID and window cross the task boundary.
+            return json.loads(result.read_text())
 
-    run_port_visit_pipeline(download_ports())
+    @task(execution_timeout=timedelta(minutes=15))
+    def publish_port_connections(metadata):
+        import sys
+        sys.path.insert(0, '/opt/ais')
+        from pipelines.port_connections.run import publish_port_connections as publish
+        publish(metadata)
+
+    publish_port_connections(run_port_visit_pipeline(download_ports()))
 
 
 ais_port_visits()
