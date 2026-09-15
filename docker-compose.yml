@@ -60,7 +60,7 @@ services:
     depends_on:
       ais-kafka:
         condition: service_healthy
-    restart: on-failure
+    restart: unless-stopped
     stop_grace_period: 45s
     networks:
       - ais-network
