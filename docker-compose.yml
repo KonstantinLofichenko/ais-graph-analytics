@@ -223,6 +223,24 @@ services:
     networks:
       - ais-network
 
+  metabase:
+    image: metabase/metabase:v0.63.17.x
+    container_name: ais-metabase
+    restart: unless-stopped
+    profiles:
+      - analytics
+    ports:
+      - "3000:3000"
+    environment:
+      JAVA_TIMEZONE: UTC
+      MB_DB_FILE: /metabase-data/metabase.db
+    volumes:
+      - metabase_data:/metabase-data
+    depends_on:
+      - clickhouse
+    networks:
+      - ais-network
+    
 networks:
   ais-network:
     name: ais-network
@@ -234,3 +252,4 @@ volumes:
   neo4j-logs:
   clickhouse-data:
   clickhouse-logs:
+  metabase_data:
