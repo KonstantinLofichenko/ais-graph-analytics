@@ -22,9 +22,10 @@ Open http://localhost:8080. The port is bound to loopback only. Login username:
 docker compose exec airflow cat /opt/airflow/simple_auth_manager_passwords.json.generated
 ```
 
-Rebuild after changing the DAG or pipeline code, including the new
-`pipelines/port_connections` module: the Docker image uses `COPY`, so restarting
-alone does not load these changes. Use the `up -d --build airflow` command above.
+Rebuild after changing the DAG or pipeline code, including the
+`pipelines/port_connections` and `pipelines/graph_metrics` modules: the Docker image
+uses `COPY`, so restarting alone does not load these changes. Use the
+`up -d --build airflow` command above.
 The image copies only explicitly allowed code and SQL files, never root `.env`.
 Compose injects only the database
 credentials required by this batch. Inside Docker the targets are
@@ -133,14 +134,50 @@ result is expected while history is sparse; the managed graph summary is then em
 The healthcheck verifies scheduler heartbeat. UI and task success are separate
 checks; a healthy container is not proof that a DAG run succeeded.
 
+## Export graph metrics
+
+The separate `ais_graph_metrics_export` DAG has one task, `export_port_metrics`,
+with `schedule=None`, no catchup, and at most one active run/task. After connection
+publishing, complete the [manual GDS workflow](../neo4j/gds/README.md), including
+write-back, before triggering this DAG. It exports the active Ports' `pageRank`
+and `communityId` to `analytics.port_graph_metrics`; it does not run GDS or set up
+Metabase.
+
+Apply [003_port_graph_metrics.sql](../clickhouse/migrations/003_port_graph_metrics.sql)
+manually once, then rebuild Airflow to include the exporter:
+
+```sh
+docker exec -i ais-clickhouse sh -c \
+  'clickhouse-client --user "$CLICKHOUSE_USER" --password "$CLICKHOUSE_PASSWORD" --multiquery' \
+  < clickhouse/migrations/003_port_graph_metrics.sql
+docker compose --profile batch up -d --build airflow
+docker compose exec airflow airflow dags unpause ais_graph_metrics_export
+docker compose exec airflow airflow dags trigger ais_graph_metrics_export
+```
+
+The exporter requires exactly one valid run/window among current Port-to-Port
+`CONNECTED_TO` relationships owned by `port-connections-v1`. Every active endpoint
+must have valid metrics and a matching `analytics.ports FINAL` ID; validation
+finishes before any inserts. `snapshot_date` is the UTC date of `window_end`, so
+retrying across a month boundary keeps the same partition and logical keys. Query
+with `FINAL` to deduplicate physical retry versions.
+
+Keep connection publishing and GDS write-back stable during export. Node metrics
+do not record their producing run, so matching relationship metadata and complete
+metric coverage cannot prove freshness. Complete GDS for the current snapshot
+before each export. See [exporter details](../pipelines/graph_metrics/README.md)
+for local execution, validation, and retry behavior.
+
 ## Checks
 
 ```sh
 .venv/bin/python -m unittest discover -s airflow/tests -v
 .venv/bin/python -m unittest discover -s pipelines/port_visits/tests -v
 .venv/bin/python -m unittest discover -s pipelines/port_connections/tests -v
+.venv/bin/python -m unittest discover -s pipelines/graph_metrics/tests -v
 docker compose exec airflow airflow dags list-import-errors
 docker compose exec airflow airflow tasks list ais_port_visits
+docker compose exec airflow airflow tasks list ais_graph_metrics_export
 ```
 
 To download ports manually without Airflow:

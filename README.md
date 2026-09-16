@@ -399,6 +399,26 @@ This milestone prepares the graph for GDS; similarity is not yet added.
 A dedicated two-task Airflow DAG now downloads ports and runs this batch. See
 [Airflow setup and usage](airflow/README.md).
 
+## Country reference dimension
+
+`analytics.countries` provides country names, ISO codes, region, and capital city
+for enriching ports: join `analytics.ports.country` to `countries.country_code`
+using the ISO alpha-2 code. It uses `ReplacingMergeTree(updated_at)` keyed by
+`country_code`; read with `FINAL` for the latest logical row per country. The manual
+[countries migration](clickhouse/migrations/002_countries.sql) creates the table and
+adds a temporary Norway seed only if `NO` is absent. It does not run automatically
+at Docker startup. Apply it from the repository root:
+
+```sh
+docker exec -i ais-clickhouse sh -c \
+  'clickhouse-client --user "$CLICKHOUSE_USER" --password "$CLICKHOUSE_PASSWORD" --multiquery' \
+  < clickhouse/migrations/002_countries.sql
+```
+
+The planned flow is public country API → Airbyte raw ingestion → dbt transformation
+→ `analytics.countries`. This migration supplies the reference table and seed;
+Airbyte ingestion and dbt transformations for countries are not implemented yet.
+
 ## Shutdown
 
 ```sh
