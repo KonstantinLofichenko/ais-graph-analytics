@@ -1,4 +1,4 @@
-// Clear the previous snapshot's results, including Ports no longer active.
+// Clear the previous snapshot's GDS results, including Ports no longer active.
 MATCH (port:Port)
 REMOVE port.pageRank, port.communityId;
 

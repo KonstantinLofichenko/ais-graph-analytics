@@ -3,8 +3,9 @@ import json
 import os
 from pathlib import Path
 import sys
+from types import ModuleType
 import unittest
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import MagicMock, Mock, call, patch
 from zoneinfo import ZoneInfo
 
 from neo4j.time import DateTime as Neo4jDateTime
@@ -15,10 +16,10 @@ from pipelines.graph_metrics.export import (
     validate_snapshot_metadata,
 )
 
-METADATA = dict(run_id='existing-connection-run-id', window_start='2026-09-14T08:00:00+00:00',
+METADATA = dict(run_id='2026-09-14T08:00:00Z', window_start='2026-09-14T08:00:00+00:00',
                 window_end='2026-09-15T08:00:00+00:00')
-PORTS = [dict(port_id='B', page_rank=0.75, community_id=2),
-         dict(port_id='A', page_rank=0.25, community_id=1)]
+PORTS = [dict(port_id='B', page_rank=0.75, community_id=2, visit_run_id=METADATA['run_id']),
+         dict(port_id='A', page_rank=0.25, community_id=1, visit_run_id=METADATA['run_id'])]
 EXPORTED_AT = datetime(2026, 9, 16, 12, tzinfo=timezone.utc)
 
 
@@ -103,8 +104,9 @@ class ExportRowTests(unittest.TestCase):
         self.assertEqual(rows[0]['window_end'].isoformat(), '2026-09-15T22:00:00+00:00')
 
     def test_zero_metrics_and_uint64_upper_bound_are_valid(self):
-        ports = [dict(port_id='A', page_rank=0, community_id=0),
-                 dict(port_id='B', page_rank=2, community_id=UINT64_MAX)]
+        ports = [dict(port_id='A', page_rank=0, community_id=0, visit_run_id=METADATA['run_id']),
+                 dict(port_id='B', page_rank=2, community_id=UINT64_MAX,
+                      visit_run_id=METADATA['run_id'])]
         rows = build_export_rows([METADATA], ports, EXPORTED_AT)
         self.assertEqual(rows[0]['page_rank'], 0.0)
         self.assertEqual(rows[1]['community_id'], UINT64_MAX)
@@ -131,6 +133,14 @@ class ExportRowTests(unittest.TestCase):
             with self.subTest(ports=ports), self.assertRaises(ExportValidationError):
                 build_export_rows([METADATA], ports, EXPORTED_AT)
 
+    def test_missing_or_stale_visit_run_id_fails(self):
+        missing = {key: value for key, value in PORTS[0].items() if key != 'visit_run_id'}
+        for port in (missing, dict(PORTS[0], visit_run_id=None),
+                     dict(PORTS[0], visit_run_id=''),
+                     dict(PORTS[0], visit_run_id='2026-09-13T08:00:00Z')):
+            with self.subTest(port=port), self.assertRaisesRegex(ExportValidationError, 'visitRunId'):
+                build_export_rows([METADATA], [PORTS[1], port], EXPORTED_AT)
+
 
 class ExportOrchestrationTests(unittest.TestCase):
     def setUp(self):
@@ -139,7 +149,7 @@ class ExportOrchestrationTests(unittest.TestCase):
         self.session = self.driver.session.return_value.__enter__.return_value
         self.tx = Mock()
         self.tx.run.return_value.single.return_value = dict(snapshots=[METADATA], ports=PORTS)
-        self.session.execute_read.side_effect = lambda callback: callback(self.tx)
+        self.session.execute_read.side_effect = lambda callback, *args: callback(self.tx, *args)
         self.ch = Mock()
         self.ch.query.return_value = '\n'.join(json.dumps({'port_id': port_id}) for port_id in ('A', 'B'))
         patches = [patch('pipelines.graph_metrics.export.GraphDatabase.driver', return_value=self.driver),
@@ -164,11 +174,13 @@ class ExportOrchestrationTests(unittest.TestCase):
         self.assertIn('collect(DISTINCT source) + collect(DISTINCT target)', query)
         self.assertIn('collect(DISTINCT port)', query)
         self.assertIn('collect(DISTINCT {run_id: r.runId', query)
+        self.assertIn('visit_run_id: port.visitRunId', query)
         self.assertEqual(self.tx.run.call_args.kwargs, {'owner': OWNER})
         self.ch.query.assert_called_once_with('SELECT port_id FROM analytics.ports FINAL FORMAT JSONEachRow')
         table, rows = self.ch.insert.call_args.args
         self.assertEqual(table, 'port_graph_metrics')
         self.assertEqual([row['port_id'] for row in rows], ['A', 'B'])
+        self.assertEqual({row['run_id'] for row in rows}, {METADATA['run_id']})
         self.assertEqual(len({row['exported_at'] for row in rows}), 1)
         self.assertEqual(summary, dict(METADATA, snapshot_date='2026-09-15', ports=2,
                                        communities=2, min_page_rank=0.25, max_page_rank=0.75))
@@ -176,6 +188,16 @@ class ExportOrchestrationTests(unittest.TestCase):
         self.assertNotIn('unused-test-password', logs.output[0])
         self.ch.session.close.assert_called_once()
         self.driver.__exit__.assert_called_once()
+
+    def test_legacy_hash_run_id_is_exported_unchanged(self):
+        legacy_run_id = '0123456789abcdef' * 4
+        self.tx.run.return_value.single.return_value = dict(
+            snapshots=[dict(METADATA, run_id=legacy_run_id)],
+            ports=[dict(port, visit_run_id=legacy_run_id) for port in PORTS])
+        summary = export_metrics()
+        rows = self.ch.insert.call_args.args[1]
+        self.assertEqual({row['run_id'] for row in rows}, {legacy_run_id})
+        self.assertEqual(summary['run_id'], legacy_run_id)
 
     def test_unknown_port_blocks_all_inserts_and_closes_clickhouse(self):
         self.ch.query.return_value = json.dumps({'port_id': 'A'})
@@ -198,6 +220,53 @@ class ExportOrchestrationTests(unittest.TestCase):
             export_metrics()
         self.mocks[1].assert_not_called()
         self.ch.insert.assert_not_called()
+
+    def test_missing_or_stale_visit_lineage_blocks_clickhouse_before_it_is_opened(self):
+        for tag in (None, '2026-09-13T08:00:00Z'):
+            with self.subTest(tag=tag):
+                self.tx.run.return_value.single.return_value = dict(
+                    snapshots=[METADATA], ports=[PORTS[0], dict(PORTS[1], visit_run_id=tag)])
+                with self.assertRaisesRegex(ExportValidationError, 'Port A: visitRunId'):
+                    export_metrics()
+                self.mocks[1].assert_not_called()
+                self.ch.insert.assert_not_called()
+
+    def test_pinned_snapshot_is_checked_around_metrics_read_in_the_same_transaction(self):
+        expected = dict(METADATA, relationships=1, movements=3, nodes=2, graph_state='same-graph')
+        gds = ModuleType('pipelines.graph_metrics.gds')
+        events = []
+        gds._read_snapshot = Mock(side_effect=lambda tx: events.append('snapshot') or expected)
+        gds._assert_snapshot = Mock()
+        result = self.tx.run.return_value
+        self.tx.run.side_effect = lambda *args, **kwargs: events.append('metrics') or result
+        with patch.dict(sys.modules, {'pipelines.graph_metrics.gds': gds}):
+            summary = export_metrics(expected)
+        self.assertEqual(events, ['snapshot', 'metrics', 'snapshot'])
+        self.assertEqual(gds._read_snapshot.call_args_list, [call(self.tx), call(self.tx)])
+        self.assertEqual(gds._assert_snapshot.call_args_list,
+                         [call(expected, expected), call(expected, expected)])
+        self.session.execute_read.assert_called_once()
+        self.assertIs(self.session.execute_read.call_args.args[1], expected)
+        self.ch.insert.assert_called_once()
+        self.assertEqual(summary['run_id'], expected['run_id'])
+
+    def test_snapshot_change_before_or_during_metric_read_blocks_clickhouse(self):
+        expected = dict(METADATA, relationships=1, movements=3, nodes=2, graph_state='original')
+        changed = dict(expected, graph_state='different-graph-with-same-run-id')
+        for successful_checks in (0, 1):
+            with self.subTest(successful_checks=successful_checks):
+                self.tx.run.reset_mock()
+                gds = ModuleType('pipelines.graph_metrics.gds')
+                gds._read_snapshot = Mock(side_effect=[expected] * successful_checks + [changed])
+                gds._assert_snapshot = Mock(side_effect=[None] * successful_checks + [
+                    ExportValidationError('Managed CONNECTED_TO snapshot changed')])
+                with patch.dict(sys.modules, {'pipelines.graph_metrics.gds': gds}), \
+                        self.assertRaisesRegex(ExportValidationError, 'snapshot changed'):
+                    export_metrics(expected)
+                self.assertEqual(gds._assert_snapshot.call_args, call(expected, changed))
+                self.assertEqual(self.tx.run.call_count, successful_checks)
+                self.mocks[1].assert_not_called()
+                self.ch.insert.assert_not_called()
 
     def test_insert_error_still_closes_clickhouse(self):
         self.ch.insert.side_effect = RuntimeError('test insert failure')

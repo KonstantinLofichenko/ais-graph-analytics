@@ -129,9 +129,10 @@ class PortVisitsDagTests(unittest.TestCase):
         self.assertIs(self.tasks['download_ports'].function(), self.ports)
         self.download.assert_called_once_with()
 
-    def run_visits(self, expected_start, expected_end, expected_max_rows, expected_source):
+    def run_visits(self, expected_start, expected_end, expected_max_rows, expected_source,
+                   *, expected_run_id):
         metadata = {
-            'run_id': 'completed-visits-batch',
+            'run_id': expected_run_id,
             'window_start': expected_start,
             'window_end': expected_end,
         }
@@ -172,8 +173,17 @@ class PortVisitsDagTests(unittest.TestCase):
         })
         with patch.dict(os.environ, {'PORT_VISITS_WINDOW_HOURS': '24',
                                      'PORT_VISITS_MAX_ROWS': '500000'}):
-            self.run_visits('2026-09-12T07:14:15.123456+00:00',
-                            '2026-09-13T08:16:17.654321+00:00', 1500000, 'dag_run.conf')
+            metadata = self.run_visits(
+                '2026-09-12T07:14:15.123456+00:00',
+                '2026-09-13T08:16:17.654321+00:00', 1500000, 'dag_run.conf',
+                expected_run_id='2026-09-12T07:14:15Z')
+        self.tasks['publish_port_connections'].function(metadata)
+        self.publish.assert_called_once_with({
+            'run_id': '2026-09-12T07:14:15Z',
+            'window_start': '2026-09-12T07:14:15.123456+00:00',
+            'window_end': '2026-09-13T08:16:17.654321+00:00',
+        })
+        self.assertIs(self.publish.call_args.args[0], metadata)
 
     def test_rolling_window_uses_same_run_start_and_environment_limit_on_retry(self):
         self.context({})
@@ -181,9 +191,11 @@ class PortVisitsDagTests(unittest.TestCase):
         with patch.dict(os.environ, {'PORT_VISITS_WINDOW_HOURS': '36',
                                      'PORT_VISITS_MAX_ROWS': '765432'}):
             first = self.run_visits(expected_start, self.run_start.isoformat(),
-                                    765432, 'rolling-default')
+                                    765432, 'rolling-default',
+                                    expected_run_id='2026-09-13T19:13:41Z')
             retry = self.run_visits(expected_start, self.run_start.isoformat(),
-                                    765432, 'rolling-default')
+                                    765432, 'rolling-default',
+                                    expected_run_id='2026-09-13T19:13:41Z')
         self.assertEqual(first, retry)
 
     def test_failed_subprocess_propagates_without_reading_result_or_publishing(self):
@@ -203,12 +215,26 @@ class PortVisitsDagTests(unittest.TestCase):
 
     def test_publisher_receives_successful_batch_metadata_unchanged(self):
         metadata = {
-            'run_id': 'completed-visits-batch',
+            'run_id': '2026-09-12T07:14:15Z',
             'window_start': '2026-09-12T07:14:15.123456+00:00',
             'window_end': '2026-09-13T08:16:17.654321+00:00',
         }
+        expected = dict(metadata)
         self.tasks['publish_port_connections'].function(metadata)
-        self.publish.assert_called_once_with(metadata)
+        self.publish.assert_called_once_with(expected)
+        self.assertEqual(metadata, expected)
+        self.assertIs(self.publish.call_args.args[0], metadata)
+
+    def test_publisher_preserves_legacy_hash_run_id(self):
+        metadata = {
+            'run_id': 'd12ea2476abbd1d39b1f04ab7ab522b6b3bd256d7177a2b2d21bb630e572b6f3',
+            'window_start': '2026-09-12T07:14:15.123456+00:00',
+            'window_end': '2026-09-13T08:16:17.654321+00:00',
+        }
+        expected = dict(metadata)
+        self.tasks['publish_port_connections'].function(metadata)
+        self.publish.assert_called_once_with(expected)
+        self.assertEqual(metadata, expected)
         self.assertIs(self.publish.call_args.args[0], metadata)
 
 

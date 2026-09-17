@@ -91,15 +91,33 @@ def enforce_row_limit(actual_rows, max_rows):
         raise RuntimeError(f'Input row count {actual_rows:,} exceeds safety limit {max_rows:,}')
 
 
-def batch_id(start, end, dataset_hash, parameters):
-    """Deterministic identity of one logical port-visit computation."""
-    return digest([
-        OWNER,
-        start.astimezone(timezone.utc).isoformat(),
-        end.astimezone(timezone.utc).isoformat(),
-        dataset_hash,
-        parameters,
-    ])
+def canonical_run_id(window_start):
+    """One analysis window per UTC start, identified at second precision."""
+    if window_start.utcoffset() is None:
+        raise ValueError('window_start must include a timezone')
+    return window_start.astimezone(timezone.utc).isoformat(timespec='seconds').replace('+00:00', 'Z')
+
+
+def validate_run_window(ch, run_id, start, end):
+    """Allow a completed run ID to be reused only for its original window."""
+    data = ch.query('''SELECT toString(r.window_start, 'UTC') AS window_start,
+                             toString(r.window_end, 'UTC') AS window_end
+                      FROM analytics.port_visit_runs AS r FINAL
+                      WHERE r.run_id = {run_id:String} FORMAT JSONEachRow''',
+                    {'param_run_id': run_id})
+    runs = [json.loads(line) for line in data.splitlines() if line]
+    if not runs:
+        return
+    if len(runs) != 1:
+        raise RuntimeError(f'Run ID {run_id} has inconsistent completed-run metadata')
+    stored_start = timestamp(runs[0]['window_start'])
+    stored_end = timestamp(runs[0]['window_end'])
+    if stored_start != start or stored_end != end:
+        raise RuntimeError(
+            f'Run ID {run_id} already exists for window '
+            f'[{stored_start.isoformat()}, {stored_end.isoformat()}); requested '
+            f'[{start.isoformat()}, {end.isoformat()}). '
+            'A run ID can identify only one analysis window; retry with the original bounds.')
 
 
 def graph_snapshot(tx, ports, counts, run_id, start, end):
@@ -128,6 +146,7 @@ def graph_snapshot(tx, ports, counts, run_id, start, end):
 
 
 def publish(ch, ports, visits, counts, run_id, dataset_hash, start, end, parameters, stats):
+    validate_run_window(ch, run_id, start, end)
     now = datetime.now(timezone.utc)
     with GraphDatabase.driver(os.getenv('NEO4J_URI', 'bolt://localhost:7687'),
                               auth=(os.getenv('NEO4J_USER', 'neo4j'), os.environ['NEO4J_PASSWORD'])) as driver:
@@ -135,7 +154,7 @@ def publish(ch, ports, visits, counts, run_id, dataset_hash, start, end, paramet
         with driver.session(database=os.getenv('NEO4J_DATABASE', 'neo4j')) as session:
             session.run('CREATE CONSTRAINT port_id_unique IF NOT EXISTS FOR (p:Port) REQUIRE p.portId IS UNIQUE').consume()
             session.run('CREATE CONSTRAINT vessel_mmsi_unique IF NOT EXISTS FOR (v:Vessel) REQUIRE v.mmsi IS UNIQUE').consume()
-            # Persist visits before exposing graph results. Retrying the same inputs uses the same IDs.
+            # Persist visits before exposing graph results. The run ID is reused for the same start.
             ch.upsert_ports(ports, dataset_hash, now)
             ch.insert('port_visits', [dict(v, run_id=run_id, updated_at=now) for v in visits])
             session.execute_write(graph_snapshot, ports, counts, run_id, start, end)
@@ -187,12 +206,7 @@ def main():
 
             counts = summaries(visits)
             dataset_hash = digest(ports)
-            run_id = batch_id(
-                start,
-                end,
-                dataset_hash,
-                parameters,
-            )
+            run_id = canonical_run_id(start)
 
             report = dict(run_id=run_id, mode='apply' if args.apply else 'preview',
                           window_start=start, window_end=end, ports=len(ports), parameters=parameters,

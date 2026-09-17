@@ -13,7 +13,7 @@ from pipelines.port_connections.run import (
 )
 
 START = datetime(2026, 9, 14, 8, tzinfo=timezone.utc)
-METADATA = dict(run_id='the-upstream-deterministic-run-id', window_start=START.isoformat(),
+METADATA = dict(run_id='2026-09-14T08:00:00Z', window_start=START.isoformat(),
                 window_end=(START + timedelta(days=1)).isoformat())
 
 
@@ -104,7 +104,7 @@ class CompletedRunTests(unittest.TestCase):
         ch.query.side_effect = [json_rows([completed_run(2)]), json_rows(visits)]
         self.assertEqual(read_completed_visits(ch, METADATA), visits)
         run_query, visit_query = ch.query.call_args_list
-        self.assertIn('FROM analytics.port_visit_runs FINAL', run_query.args[0])
+        self.assertIn('FROM analytics.port_visit_runs AS r FINAL', run_query.args[0])
         self.assertIn('run_id = {run_id:String}', run_query.args[0])
         self.assertIn("window_start = {window_start:DateTime64(6, 'UTC')}", run_query.args[0])
         self.assertIn("window_end = {window_end:DateTime64(6, 'UTC')}", run_query.args[0])
@@ -279,6 +279,25 @@ class GraphSnapshotTests(unittest.TestCase):
 
 
 class EntrypointTests(unittest.TestCase):
+    def test_canonical_and_legacy_run_ids_pass_through_query_graph_and_summary(self):
+        for run_id in (METADATA['run_id'], '0123456789abcdef' * 4):
+            with self.subTest(run_id=run_id):
+                metadata = dict(METADATA, run_id=run_id)
+                ch = Mock()
+                ch.query.side_effect = [json_rows([dict(metadata, visit_count=2)]),
+                                        json_rows([visit('A', 0), visit('B', 1)])]
+                graph = FakeGraph(['A', 'B'])
+                with patch('pipelines.port_connections.run.ClickHouse', return_value=ch), \
+                        patch('pipelines.port_connections.run.load_dotenv'), \
+                        patch('pipelines.port_connections.run.publish_connections',
+                              side_effect=lambda rows, passed_metadata: graph.execute_write(
+                                  graph_snapshot, rows, passed_metadata)):
+                    summary = publish_port_connections(metadata)
+                self.assertTrue(all(call.args[1]['param_run_id'] == run_id
+                                    for call in ch.query.call_args_list))
+                self.assertEqual(graph.edges[0]['properties']['runId'], run_id)
+                self.assertEqual(summary['run_id'], run_id)
+
     def test_reuses_upstream_metadata_and_returns_only_small_summary(self):
         visits = [visit('A', 0), visit('B', 1)]
         ch = Mock()

@@ -19,6 +19,7 @@ def main():
         ch.query = lambda sql, params=None: original_query(sql.replace('analytics.', database+'.').replace('DATABASE IF NOT EXISTS analytics', 'DATABASE IF NOT EXISTS '+database), params)
         ch.initialize()
         now = datetime(2026,9,1,tzinfo=timezone.utc)
+        run_id = run.canonical_run_id(now)
         port = dict(port_id='TEST:'+uuid.uuid4().hex,name='Synthetic test',country='XX',latitude=60.,longitude=5.,radius_m=1500.)
         ch.upsert_ports([port], 'test', now)
         ch.upsert_ports([port], 'test', now+timedelta(hours=1))
@@ -30,11 +31,11 @@ def main():
         visits,stats = detect(rows,[port])
         assert len(visits)==2
         counts=summaries(visits)
-        payload=[dict(v,run_id='test',updated_at=now) for v in visits]
+        payload=[dict(v,run_id=run_id,updated_at=now) for v in visits]
         ch.insert('port_visits',payload)
         ch.insert('port_visits',payload)
         assert ch.query('SELECT count() FROM analytics.port_visits FINAL').strip()=='2'
-        ch.insert('port_visit_runs',[dict(run_id='test',window_start=now,window_end=now+timedelta(days=1),
+        ch.insert('port_visit_runs',[dict(run_id=run_id,window_start=now,window_end=now+timedelta(days=1),
                   dataset_hash='test',parameters='{}',source_rows=len(rows),visit_count=2,completed_at=now)])
         assert ch.query('SELECT count() FROM analytics.current_port_visits').strip()=='2'
         run.OWNER='test:'+uuid.uuid4().hex
@@ -43,15 +44,15 @@ def main():
             with driver.session(database=os.getenv('NEO4J_DATABASE','neo4j')) as session:
                 tx=session.begin_transaction()
                 try:
-                    run.graph_snapshot(tx,[port],counts,'test',now,now+timedelta(days=1))
+                    run.graph_snapshot(tx,[port],counts,run_id,now,now+timedelta(days=1))
                     # Simulate an older creation timestamp and confirm reload preserves it.
                     tx.run("MATCH (p:Port {portId:$id}) SET p.createdAt=datetime('2020-01-01T00:00:00Z')", id=port['port_id']).consume()
-                    run.graph_snapshot(tx,[port],counts,'test',now,now+timedelta(days=1))
+                    run.graph_snapshot(tx,[port],counts,run_id,now,now+timedelta(days=1))
                     stamp = tx.run("MATCH (p:Port {portId:$id}) RETURN p.createdAt.year=2020 AS preserved, p.updatedAt > p.createdAt AS updated", id=port['port_id']).single()
                     assert stamp['preserved'] and stamp['updated']
                     record=tx.run('MATCH ()-[r:VISITED {managedBy:$owner}]->() RETURN count(r) AS n, sum(r.visitCount) AS visits',owner=run.OWNER).single()
                     assert (record['n'],record['visits'])==(1,2)
-                    run.graph_snapshot(tx,[port],[],'empty',now,now+timedelta(days=1))
+                    run.graph_snapshot(tx,[port],[],run_id,now,now+timedelta(days=1))
                     assert tx.run('MATCH ()-[r:VISITED {managedBy:$owner}]->() RETURN count(r) AS n',owner=run.OWNER).single()['n']==0
                 finally:
                     tx.rollback()

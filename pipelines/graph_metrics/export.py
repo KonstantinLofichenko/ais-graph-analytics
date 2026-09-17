@@ -32,7 +32,8 @@ SNAPSHOT_QUERY = '''
     WITH snapshots, collect(DISTINCT port) AS ports
     RETURN snapshots,
            [port IN ports | {port_id: port.portId, page_rank: port.pageRank,
-                             community_id: port.communityId}] AS ports
+                             community_id: port.communityId,
+                             visit_run_id: port.visitRunId}] AS ports
 '''
 
 
@@ -89,6 +90,9 @@ def build_export_rows(snapshots, ports, exported_at):
         if port_id in seen:
             raise ExportValidationError(f'Duplicate active Port portId: {port_id}')
         seen.add(port_id)
+        if port.get('visit_run_id') != metadata['run_id']:
+            raise ExportValidationError(f'Port {port_id}: visitRunId must match current '
+                                        f'CONNECTED_TO run_id {metadata["run_id"]}')
         page_rank = port.get('page_rank')
         if isinstance(page_rank, bool) or not isinstance(page_rank, (int, float)):
             raise ExportValidationError(f'Port {port_id}: pageRank must be a finite nonnegative number')
@@ -108,10 +112,17 @@ def build_export_rows(snapshots, ports, exported_at):
     return sorted(rows, key=lambda row: row['port_id'])
 
 
-def read_graph_snapshot(tx):
+def read_graph_snapshot(tx, expected_snapshot=None):
+    if expected_snapshot is not None:
+        # Local import keeps the standalone exporter independent of the GDS task
+        # workflow, while pinning that workflow's original graph during export.
+        from pipelines.graph_metrics.gds import _assert_snapshot, _read_snapshot
+        _assert_snapshot(expected_snapshot, _read_snapshot(tx))
     record = tx.run(SNAPSHOT_QUERY, owner=OWNER).single()
     if record is None:
         raise ExportValidationError('No managed CONNECTED_TO snapshot is available to export')
+    if expected_snapshot is not None:
+        _assert_snapshot(expected_snapshot, _read_snapshot(tx))
     return record['snapshots'], record['ports']
 
 
@@ -124,7 +135,7 @@ def validate_canonical_ports(ch, rows):
                                     + ', '.join(missing))
 
 
-def export_metrics():
+def export_metrics(expected_snapshot=None):
     """Read existing graph metrics and insert one validated, retry-stable snapshot."""
     load_dotenv(ROOT / '.env')
     with GraphDatabase.driver(os.getenv('NEO4J_URI', 'bolt://localhost:7687'),
@@ -132,7 +143,7 @@ def export_metrics():
                                     os.environ['NEO4J_PASSWORD'])) as driver:
         driver.verify_connectivity()
         with driver.session(database=os.getenv('NEO4J_DATABASE', 'neo4j')) as session:
-            snapshots, ports = session.execute_read(read_graph_snapshot)
+            snapshots, ports = session.execute_read(read_graph_snapshot, expected_snapshot)
     rows = build_export_rows(snapshots, ports, datetime.now(timezone.utc))
     ch = ClickHouse()
     try:

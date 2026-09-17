@@ -46,10 +46,25 @@ This small pilot sorts/loads a bounded input into memory and is not yet a full-v
 production AIS processor. Narrow the window when needed; scaling requires moving
 candidate selection/sessionization into ClickHouse or a streaming batch reader.
 
-The published `run_id` is derived only from the pipeline version and the normalized
-UTC `start`/`end`, never from wall-clock time or the fetched rows. Repeating the
-exact same window is therefore idempotent: it updates the same ClickHouse snapshot
-and Neo4j `VISITED` summary rather than creating a logically duplicate batch.
+### Run identity
+
+For new runs, `run_id = canonical UTC window_start`. `canonical_run_id(window_start)`
+normalizes the start to UTC and formats it to whole seconds with a trailing `Z`. For example,
+`2026-09-15T11:00:00+03:00` becomes `2026-09-15T08:00:00Z`. Fractional seconds are
+omitted only from the ID; the stored window bounds and detection retain their
+timestamp precision. The ID does not depend on `window_end`, pipeline version,
+dataset, configuration, source rows, wall-clock time, or Airflow run/task IDs.
+
+Windows may span 24, 36, 48 hours, or any other valid duration. Each run ID has one
+immutable stored window. Before publication writes, the batch reads
+`analytics.port_visit_runs FINAL` for that ID. If it already exists, both requested
+bounds must equal the stored instants after UTC normalization, including fractional
+seconds. Retrying the same exact window is allowed; changing the end or the start's
+fractional seconds while retaining the same ID fails before publication writes.
+
+The same string is passed through `analytics.port_visits`,
+`analytics.port_visit_runs`, Neo4j `VISITED`/`CONNECTED_TO`, and
+`analytics.port_graph_metrics`. Existing hash IDs remain readable and are not rewritten.
 
 ## Reference and detection rules
 
@@ -96,12 +111,12 @@ ClickHouse (`analytics` database):
 - `current_port_visits`: only the most recently completed run, with `FINAL` applied.
 
 An older run's visits remain available for inspection. Do not sum visits across
-runs: overlapping snapshots can represent the same underlying stay. The run ID
-depends only on the pipeline version and normalized UTC window bounds. Source rows,
-reference records and detector settings do not create a new run identity for the
-same version/window. ReplacingMergeTree plus `FINAL` gives one logical row per key
-even before background merges. Increment `OWNER`'s version when changing detection
-semantics. Empty runs are recorded and clear the current managed summary.
+runs: overlapping snapshots can represent the same underlying stay. New run IDs
+identify the UTC window start at second precision; ownership/version labels and
+dataset hashes remain separate metadata. ReplacingMergeTree plus `FINAL` gives
+one logical row per key even before background merges. It does not merge an old
+hash ID with a new timestamp ID for the same window. Empty runs are recorded and
+clear the current managed summary.
 
 Neo4j:
 
@@ -166,6 +181,12 @@ occurs after the graph commit, its run ID may temporarily differ from ClickHouse
 latest completed run. Rerun with the same explicit window and unchanged inputs to
 reconcile. Partial ClickHouse snapshots without a completed run are not exposed by
 the current view. Check run IDs before downstream similarity/export work.
+
+Recalculating the same start with changed data or settings still reuses the run
+ID. The existing insert-only behavior replaces matching `(run_id, visit_id)` keys
+but does not delete visits that disappear from the recalculation. Such retained
+rows cause the connection publisher's completed-run count check to fail. This
+refactor does not add snapshot cleanup or change that retry behavior.
 
 Airflow starts connection publishing only after the visit task succeeds, passing
 only `run_id`, `window_start`, and `window_end` through XCom. The visit subprocess

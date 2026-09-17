@@ -15,7 +15,8 @@ ORDER BY port_id;
 ALTER TABLE analytics.ports ADD COLUMN IF NOT EXISTS
     created_at DateTime64(6, 'UTC') DEFAULT updated_at;
 
--- One snapshot per input/configuration hash; FINAL makes retries idempotent to readers.
+-- New run_id values are canonical UTC window_start timestamps (seconds, trailing Z).
+-- FINAL preserves the existing retry behavior; historical hash IDs remain valid keys.
 CREATE TABLE IF NOT EXISTS analytics.port_visits
 (
     run_id String, visit_id String, mmsi UInt32, port_id String,

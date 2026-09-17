@@ -1,7 +1,10 @@
 # Port network analytics with Neo4j GDS
 
-Manual Cypher workflow for the current published Port network. Compose already
-enables the `graph-data-science` plugin; these scripts require no image rebuild.
+Manual Cypher workflow for inspecting the current published Port network. The
+[Airflow `ais_gds_metrics` DAG](../../airflow/README.md#run-gds-and-export-graph-metrics)
+automates the same algorithms, validates the snapshot, writes metrics with their
+producing run ID, and exports them to ClickHouse. Compose already enables the
+`graph-data-science` plugin; the manual scripts require no image rebuild.
 Run statements in Neo4j Browser (http://localhost:7474) using the same user and
 the `neo4j` database throughout. Check the installed GDS version with:
 
@@ -25,6 +28,13 @@ recomputes the algorithms with the same settings and writes the current results
 on active Ports. The cleanup and two write calls commit separately; a failure can
 leave cleared or partially written results. Rerun step 05 after resolving the
 failure. Only step 05 changes database properties.
+
+GDS leaves `visitRunId`, `visitWindowStart`, and `visitWindowEnd` unchanged.
+Export requires complete metrics and `Port.visitRunId == CONNECTED_TO.runId`.
+The automated DAG also requires that ID to match its captured `run_id` and checks
+that the managed graph has not changed during calculation. For manual execution,
+finish write-back for the current snapshot before exporting: visit metadata
+identifies the input snapshot, not when the metric values were calculated.
 
 ## Input and interpretation
 
@@ -56,11 +66,24 @@ These scores and communities describe the observed snapshot, not complete traffi
 Finish Airflow connection publishing before step 01 and keep that snapshot stable
 while running the workflow. GDS graphs are in-memory snapshots, not live views:
 after another publication, rerun step 01 and then the analyses/write-back. The
-publisher does not refresh `pageRank` or `communityId`; step 05 clears both
+publisher does not refresh GDS metrics; step 05 clears both metric
 properties from all Ports before writing current active-port results. Ports no
-longer in the snapshot retain neither property. If no managed connections exist,
-run only the cleanup statement in step 05; there is no active network to analyze
+longer in the snapshot retain neither metric property. If no managed connections
+exist, run only the cleanup statement in step 05; there is no active network to analyze
 or write back.
+
+Do not overlap manual GDS, connection publishing, or other graph writers with
+`ais_gds_metrics`: both workflows use the fixed graph names below. The DAG's one
+active run limit applies only to that DAG. It rechecks the original metadata,
+counts, and an ephemeral graph-state checksum between stages and during the final
+export read, detecting relationship/weight changes even under the same run ID.
+The checksum does not replace or generate the managed run ID.
+
+Airflow always attempts projection cleanup after success or failure, while its
+final success task preserves failures from earlier stages. If Neo4j restarts or
+a projection is lost, rerun the whole DAG. The
+[exporter documentation](../../pipelines/graph_metrics/README.md) describes the
+automated stages and rebuild/trigger commands.
 
 To release only this workflow's in-memory graphs:
 
