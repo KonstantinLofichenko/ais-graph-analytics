@@ -1,0 +1,31 @@
+version: 2
+
+models:
+  - name: stg_countries
+    description: "Normalized country reference data loaded from the REST Countries API via Airbyte."
+
+    columns:
+      - name: country_code
+        description: "ISO 3166-1 alpha-2 country code."
+        data_tests:
+          - not_null
+          - unique
+
+      - name: iso3
+        description: "ISO 3166-1 alpha-3 country code."
+        data_tests:
+          - not_null
+
+      - name: numeric_code
+        description: "ISO 3166-1 numeric country code stored as a string to preserve leading zeroes."
+
+      - name: country_name
+        description: "Common country name."
+        data_tests:
+          - not_null
+
+      - name: region
+        description: "Geographical region supplied by the source API."
+
+      - name: capital_city
+        description: "Primary capital city, when available."

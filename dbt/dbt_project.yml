@@ -1,0 +1,15 @@
+name: 'ais_graph_analytics'
+version: '1.0.0'
+config-version: 2
+
+profile: 'ais_graph_analytics'
+
+model-paths: ["models"]
+test-paths: ["tests"]
+
+models:
+  ais_graph_analytics:
+    staging:
+      +materialized: view
+    marts:
+      +materialized: table

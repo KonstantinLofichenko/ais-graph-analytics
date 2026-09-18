@@ -1,0 +1,30 @@
+version: 2
+
+models:
+  - name: vessels
+    description: >
+      AIS vessel/entity dimension derived from position observations.
+      MMSI is used as the entity key. Vessel names are descriptive
+      attributes and are not assumed to be unique.
+
+    columns:
+      - name: mmsi
+        description: "Maritime Mobile Service Identity used as the AIS entity key."
+        data_tests:
+          - not_null
+          - unique
+
+      - name: vessel_name
+        description: "Latest non-empty vessel name observed for the MMSI."
+
+      - name: ship_type
+        description: "Latest non-null AIS ship type observed for the MMSI."
+
+      - name: first_seen
+        description: "Earliest AIS observation timestamp for the MMSI."
+
+      - name: last_seen
+        description: "Latest AIS observation timestamp for the MMSI."
+
+      - name: name_count
+        description: "Number of distinct non-empty names observed for the MMSI."

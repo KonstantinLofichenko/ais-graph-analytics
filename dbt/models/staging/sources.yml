@@ -1,0 +1,26 @@
+version: 2
+
+sources:
+  - name: raw
+    schema: raw
+    tables:
+      - name: countries
+        description: "Country reference data loaded from REST Countries API by Airbyte."
+
+      - name: ais_positions
+        description: "Raw AIS position events loaded into ClickHouse."
+
+  - name: analytics
+    schema: analytics
+    tables:
+      - name: port_visits
+        description: "Detected vessel port visits produced by the port visit pipeline."
+
+      - name: port_visit_runs
+        description: "Metadata for completed port visit processing runs."
+
+      - name: port_graph_metrics
+        description: "Snapshot-specific graph metrics exported from Neo4j GDS."
+
+      - name: ports
+        description: "Port reference data used by the port visit and graph pipelines."

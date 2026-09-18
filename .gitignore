@@ -54,3 +54,4 @@ neo4j/connectors/*.json
 
 # Local batch lock and validation reports
 pipelines/port_visits/.run.lock
+.venv-dbt/
