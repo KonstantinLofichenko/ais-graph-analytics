@@ -10,6 +10,9 @@ sources:
       - name: ais_positions
         description: "Raw AIS position events loaded into ClickHouse."
 
+      - name: hais_positions
+        description: "Raw historical AIS (HAIS) position events loaded into ClickHouse."
+
   - name: analytics
     schema: analytics
     tables:

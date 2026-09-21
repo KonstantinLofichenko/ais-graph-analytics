@@ -44,6 +44,7 @@ airflow/airflow.cfg
 *.code-workspace
 
 # Local data and generated exports
+data/hais/
 *.sqlite
 *.db
 *.log
