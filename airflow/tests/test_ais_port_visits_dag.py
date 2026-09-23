@@ -167,21 +167,21 @@ class PortVisitsDagTests(unittest.TestCase):
 
     def test_explicit_window_and_row_limit_reach_subprocess_and_small_xcom(self):
         self.context({
-            'start': '2026-09-12T10:14:15.123456+03:00',
-            'end': '2026-09-13T11:16:17.654321+03:00',
+            'start': '2026-09-12',
+            'end': '2026-09-13',
             'max_rows': 1500000,
         })
         with patch.dict(os.environ, {'PORT_VISITS_WINDOW_HOURS': '24',
                                      'PORT_VISITS_MAX_ROWS': '500000'}):
             metadata = self.run_visits(
-                '2026-09-12T07:14:15.123456+00:00',
-                '2026-09-13T08:16:17.654321+00:00', 1500000, 'dag_run.conf',
-                expected_run_id='2026-09-12T07:14:15Z')
+                '2026-09-12T00:00:00+00:00',
+                '2026-09-13T00:00:00+00:00', 1500000, 'dag_run.conf',
+                expected_run_id='2026-09-12T00:00:00Z')
         self.tasks['publish_port_connections'].function(metadata)
         self.publish.assert_called_once_with({
-            'run_id': '2026-09-12T07:14:15Z',
-            'window_start': '2026-09-12T07:14:15.123456+00:00',
-            'window_end': '2026-09-13T08:16:17.654321+00:00',
+            'run_id': '2026-09-12T00:00:00Z',
+            'window_start': '2026-09-12T00:00:00+00:00',
+            'window_end': '2026-09-13T00:00:00+00:00',
         })
         self.assertIs(self.publish.call_args.args[0], metadata)
 
@@ -215,9 +215,9 @@ class PortVisitsDagTests(unittest.TestCase):
 
     def test_publisher_receives_successful_batch_metadata_unchanged(self):
         metadata = {
-            'run_id': '2026-09-12T07:14:15Z',
-            'window_start': '2026-09-12T07:14:15.123456+00:00',
-            'window_end': '2026-09-13T08:16:17.654321+00:00',
+            'run_id': '2026-09-12T00:00:00Z',
+            'window_start': '2026-09-12T00:00:00+00:00',
+            'window_end': '2026-09-13T00:00:00+00:00',
         }
         expected = dict(metadata)
         self.tasks['publish_port_connections'].function(metadata)
@@ -228,8 +228,8 @@ class PortVisitsDagTests(unittest.TestCase):
     def test_publisher_preserves_legacy_hash_run_id(self):
         metadata = {
             'run_id': 'd12ea2476abbd1d39b1f04ab7ab522b6b3bd256d7177a2b2d21bb630e572b6f3',
-            'window_start': '2026-09-12T07:14:15.123456+00:00',
-            'window_end': '2026-09-13T08:16:17.654321+00:00',
+            'window_start': '2026-09-12T00:00:00+00:00',
+            'window_end': '2026-09-13T00:00:00+00:00',
         }
         expected = dict(metadata)
         self.tasks['publish_port_connections'].function(metadata)

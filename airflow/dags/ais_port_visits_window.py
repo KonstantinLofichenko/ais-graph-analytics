@@ -1,17 +1,30 @@
 """Pure start/end/max_rows resolution for the ais_port_visits DAG (no Airflow imports)."""
 from datetime import datetime, timedelta, timezone
+import re
 
 
-def _parse_timestamp(value, field_name):
-    if not isinstance(value, str):
-        raise ValueError(f'{field_name} must be an ISO-8601 string')
+def parse_date(value, field_name):
+    if not isinstance(value, str) or not re.fullmatch(r'\d{4}-\d{2}-\d{2}', value):
+        raise ValueError(f'{field_name} must be a YYYY-MM-DD date, not a timestamp')
     try:
-        parsed = datetime.fromisoformat(value)
+        return datetime.strptime(value, '%Y-%m-%d').replace(tzinfo=timezone.utc)
     except ValueError:
-        raise ValueError(f'{field_name} is not a valid ISO-8601 timestamp') from None
-    if parsed.tzinfo is None:
-        raise ValueError(f'{field_name} must include timezone information')
-    return parsed.astimezone(timezone.utc)
+        raise ValueError(f'{field_name} must be a valid YYYY-MM-DD date') from None
+
+
+def daily_windows(conf):
+    """Explicit master range: inclusive start, exclusive end, one conf per day."""
+    conf = conf or {}
+    start = parse_date(conf.get('start'), 'start')
+    end = parse_date(conf.get('end'), 'end')
+    if start >= end:
+        raise ValueError('start must be earlier than end')
+    extra = {}
+    if conf.get('max_rows') is not None:
+        extra['max_rows'] = _positive_int(conf['max_rows'], 'max_rows')
+    return [dict(start=(start + timedelta(days=i)).date().isoformat(),
+                 end=(start + timedelta(days=i + 1)).date().isoformat(), **extra)
+            for i in range((end - start).days)]
 
 
 def _positive_int(value, field_name):
@@ -37,14 +50,16 @@ def resolve_window(conf, dag_run_start_date, window_hours_env, max_rows_env):
     end_raw = conf.get('end')
     max_rows_raw = conf.get('max_rows')
 
-    if (start_raw is None) != (end_raw is None):
+    if ('start' in conf) != ('end' in conf):
         raise ValueError('dag_run.conf must supply both start and end, or neither')
 
-    if start_raw is not None:
-        start = _parse_timestamp(start_raw, 'start')
-        end = _parse_timestamp(end_raw, 'end')
+    if 'start' in conf:
+        start = parse_date(start_raw, 'start')
+        end = parse_date(end_raw, 'end')
         if start >= end:
             raise ValueError('start must be earlier than end')
+        if end - start != timedelta(days=1):
+            raise ValueError('ais_port_visits requires exactly one daily window')
         source = 'dag_run.conf'
     else:
         window_hours = _positive_int(window_hours_env, 'PORT_VISITS_WINDOW_HOURS')

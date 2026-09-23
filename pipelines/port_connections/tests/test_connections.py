@@ -174,22 +174,48 @@ class FakeGraph:
         self.edges = deepcopy(list(edges))
         self.calls = []
         self.fail_on_write = fail_on_write
+        self.snapshots = {}
+        self.fail_metadata = False
 
     def execute_write(self, callback, *args):
         tx = FakeTransaction(self)
         callback(tx, *args)
         self.edges = tx.edges  # Commit only after the entire callback succeeds.
+        self.snapshots = tx.snapshots
 
 
 class FakeTransaction:
     def __init__(self, graph):
         self.graph = graph
         self.edges = deepcopy(graph.edges)
+        self.snapshots = deepcopy(graph.snapshots)
         self.writes = 0
 
     def run(self, query, **parameters):
         query = ' '.join(query.split())
         self.graph.calls.append((query, deepcopy(parameters)))
+        if 'MERGE (s:ConnectionSnapshot' in query:
+            assert 'SET s.generation = coalesce(s.generation, 0) + 1' in query
+            snapshot = self.snapshots.setdefault(parameters['owner'], {'managedBy': parameters['owner']})
+            snapshot['generation'] = snapshot.get('generation', 0) + 1
+            return FakeResult()
+        if 'AS edge_count' in query:
+            assert 'MATCH (a)-[r:CONNECTED_TO]->(b)' in query
+            owned = [e for e in self.edges if e['kind'] == 'CONNECTED_TO'
+                     and e['properties'].get('managedBy') == parameters['owner']]
+            return FakeResult([{'edge_count': len(owned), 'malformed': sum(
+                e['source_label'] != 'Port' or e['destination_label'] != 'Port' for e in owned)}])
+        if 'SET s.runId' in query:
+            assert 's.windowStart = datetime($window_start)' in query
+            assert 's.windowEnd = datetime($window_end)' in query
+            assert 's.publishedAt = datetime()' in query
+            if self.graph.fail_metadata:
+                raise RuntimeError('metadata write failed')
+            self.snapshots[parameters['owner']].update(
+                runId=parameters['run_id'], windowStart=datetime.fromisoformat(parameters['window_start']),
+                windowEnd=datetime.fromisoformat(parameters['window_end']), edgeCount=parameters['edge_count'],
+                publishedAt=START)
+            return FakeResult()
         if 'OPTIONAL MATCH' in query:
             assert 'OPTIONAL MATCH (p:Port {portId: port_id})' in query
             assert 'WHERE p IS NULL' in query
@@ -237,7 +263,7 @@ class GraphSnapshotTests(unittest.TestCase):
         self.unrelated = [edge('A', 'B', owner=None, note='manual route'),
                           edge('A', 'B', owner='some-other-publisher', note='keep'),
                           edge('vessel', 'A', kind='VISITED', source_label='Vessel'),
-                          edge('A', 'vessel', destination_label='Vessel'),
+                          edge('A', 'vessel', destination_label='Vessel', owner='other-publisher'),
                           edge('A', 'B', kind='OTHER')]
 
     def test_same_run_twice_is_logically_idempotent_and_preserves_manual_edges(self):
@@ -258,14 +284,15 @@ class GraphSnapshotTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, r'Missing Neo4j Port nodes \(portId\): B'):
             graph.execute_write(graph_snapshot, self.rows, METADATA)
         self.assertEqual(graph.edges, before)
-        self.assertEqual(len(graph.calls), 1)
-        self.assertNotIn('DELETE', graph.calls[0][0])
+        self.assertEqual(len(graph.calls), 2)
+        self.assertTrue(all('DELETE' not in query for query, _ in graph.calls))
+        self.assertEqual(graph.snapshots, {})
 
     def test_empty_snapshot_clears_only_owned_connections(self):
         graph = FakeGraph(['A', 'B'], [edge('A', 'B'), *self.unrelated])
         graph.execute_write(graph_snapshot, [], METADATA)
         self.assertEqual(graph.edges, self.unrelated)
-        self.assertEqual(len(graph.calls), 1)
+        self.assertEqual(len(graph.calls), 4)
 
     def test_later_batch_endpoint_failure_rolls_back_deletion_and_prior_writes(self):
         rows = [dict(self.rows[0], to_port_id=f'P{i:04}') for i in range(1001)]
@@ -275,7 +302,50 @@ class GraphSnapshotTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, 'endpoint match failed: expected 1 relationships, published 0'):
             graph.execute_write(graph_snapshot, rows, METADATA)
         self.assertEqual(graph.edges, before)
-        self.assertEqual(len([q for q, _ in graph.calls if 'MERGE' in q]), 2)
+        self.assertEqual(len([q for q, _ in graph.calls if 'MERGE (a)' in q]), 2)
+
+    def test_snapshot_metadata_and_generation_include_repeated_empty_publications(self):
+        graph = FakeGraph(['A', 'B'])
+        for generation, rows in enumerate((self.rows, self.rows, [], []), start=1):
+            metadata = METADATA if rows else dict(METADATA, run_id='2026-09-13T00:00:00Z',
+                window_start='2026-09-13T00:00:00+00:00', window_end='2026-09-14T00:00:00+00:00')
+            graph.execute_write(graph_snapshot, rows, metadata)
+            self.assertEqual(set(graph.snapshots), {OWNER})
+            snapshot = graph.snapshots[OWNER]
+            self.assertEqual(snapshot['generation'], generation)
+            self.assertEqual(snapshot['runId'], metadata['run_id'])
+            self.assertEqual(snapshot['windowStart'], datetime.fromisoformat(metadata['window_start']))
+            self.assertEqual(snapshot['windowEnd'], datetime.fromisoformat(metadata['window_end']))
+            self.assertEqual(snapshot['edgeCount'], len(graph.edges))
+            self.assertEqual(snapshot['edgeCount'], len(rows))
+            self.assertIsInstance(snapshot['publishedAt'], datetime)
+
+    def test_failures_roll_back_existing_metadata_generation_and_edges(self):
+        for failure in ('batch', 'metadata', 'count'):
+            with self.subTest(failure=failure):
+                graph = FakeGraph(['A', 'B'])
+                graph.execute_write(graph_snapshot, self.rows, METADATA)
+                before = deepcopy((graph.edges, graph.snapshots))
+                graph.fail_on_write = 1 if failure == 'batch' else None
+                graph.fail_metadata = failure == 'metadata'
+                # Duplicate input rows MERGE into one actual edge; final count must catch it.
+                rows = self.rows * 2 if failure == 'count' else self.rows
+                with self.assertRaises(RuntimeError):
+                    graph.execute_write(graph_snapshot, rows, dict(METADATA, run_id='next-run'))
+                self.assertEqual((graph.edges, graph.snapshots), before)
+
+    def test_malformed_owned_edges_reject_nonempty_and_empty_publication(self):
+        for rows in (self.rows, []):
+            for source_label, destination_label in (('Vessel', 'Port'), ('Port', 'Vessel')):
+                with self.subTest(rows=rows, labels=(source_label, destination_label)):
+                    graph = FakeGraph(['A', 'B'])
+                    graph.execute_write(graph_snapshot, self.rows, METADATA)
+                    graph.edges.append(edge('A', 'B', source_label=source_label,
+                                            destination_label=destination_label))
+                    before = deepcopy((graph.edges, graph.snapshots))
+                    with self.assertRaisesRegex(RuntimeError, 'two Port endpoints'):
+                        graph.execute_write(graph_snapshot, rows, METADATA)
+                    self.assertEqual((graph.edges, graph.snapshots), before)
 
 
 class EntrypointTests(unittest.TestCase):

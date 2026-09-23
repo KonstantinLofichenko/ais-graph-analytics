@@ -31,7 +31,9 @@ def connection(relationship_id, source, target, weight):
 
 class GdsWorkflowTests(unittest.TestCase):
     def setUp(self):
-        self.record = dict(snapshots=[dict(METADATA)], connections=[
+        self.record = dict(publications=[dict(METADATA, managed_by=gds.OWNER,
+                            edge_count=3, generation=1, published_at='2026-09-17T10:00:00Z')],
+                           snapshots=[dict(METADATA)], connections=[
             connection('rel-1', 'A', 'B', 3), connection('rel-2', 'B', 'C', 7),
             connection('rel-3', 'C', 'A', 2),
         ])
@@ -79,6 +81,10 @@ class GdsWorkflowTests(unittest.TestCase):
             record = self.record
         elif query in (gds.LIST_QUERY, gds.PROJECT_QUERY):
             record = self.catalog[params['graph']]
+        elif query == gds.EXISTS_QUERY:
+            record = dict(exists=False)
+        elif query == gds.STALE_METRICS_QUERY:
+            record = dict(stale_ports=len(self.ports))
         elif query == gds.PAGERANK_QUERY:
             record = dict(nodes=3, min_page_rank=0.2, max_page_rank=1.2)
         elif query == gds.LOUVAIN_QUERY:
@@ -92,6 +98,8 @@ class GdsWorkflowTests(unittest.TestCase):
         elif query == gds.METRICS_QUERY:
             record = dict(ports=self.ports)
         elif query in (gds.CLEAR_QUERY, gds.DROP_QUERY):
+            if query == gds.CLEAR_QUERY and not self.record['connections']:
+                self.ports = []
             record = None  # drop(..., false) may yield no row when absent.
         else:
             self.fail('Unexpected Neo4j query: ' + query)
@@ -308,6 +316,7 @@ class GdsWorkflowTests(unittest.TestCase):
     def test_matching_ports_and_connections_cannot_replace_captured_dag_run(self):
         next_run = '2026-09-16T08:00:00Z'
         self.record['snapshots'][0]['run_id'] = next_run
+        self.record['publications'][0]['run_id'] = next_run
         for row in self.record['connections']:
             row['source_visit_run_id'] = next_run
             row['target_visit_run_id'] = next_run
@@ -371,6 +380,81 @@ class GdsWorkflowTests(unittest.TestCase):
         self.assertEqual(summary, dict(METADATA, nodes=3, directed_relationships=3,
                                       communities=2, modularity=0.64, min_page_rank=0.3,
                                       max_page_rank=1.3, exported_ports=3))
+
+    def empty_snapshot(self):
+        self.record['connections'] = []
+        self.record['snapshots'] = []
+        self.record['publications'][0]['edge_count'] = 0
+        return gds.validate_graph_snapshot()
+
+    def test_verified_empty_workflow_skips_all_algorithms_and_clears_stale_metrics(self):
+        snapshot = self.empty_snapshot()
+        self.assertEqual((snapshot['relationships'], snapshot['movements'], snapshot['nodes']), (0, 0, 0))
+        state = gds.recreate_gds_projections(snapshot)
+        self.assertEqual(state['projections'], {})
+        self.assertEqual(state['directed_relationships'], 0)
+        state = gds.run_louvain(gds.run_pagerank(state))
+        self.assertEqual((state['communities'], state['modularity'], state['ran_levels']), (0, None, 0))
+        state = gds.write_metrics_to_neo4j(state)
+        self.assertEqual(state['nodes_written'], 0)
+        state = gds.validate_metrics(state)
+        self.assertEqual((state['min_page_rank'], state['max_page_rank']), (None, None))
+        self.assertEqual(self.ports, [])
+        self.assertEqual(len(self.params(gds.DROP_QUERY)), 2)
+        self.assertIn(gds.CLEAR_QUERY, self.queries())
+        for query in (gds.PROJECT_QUERY, gds.PAGERANK_QUERY, gds.LOUVAIN_QUERY,
+                      gds.LOUVAIN_STATS_QUERY, gds.PAGERANK_WRITE_QUERY,
+                      gds.LOUVAIN_WRITE_QUERY, gds.METRICS_QUERY):
+            self.assertNotIn(query, self.queries())
+
+    def test_publication_missing_malformed_or_inconsistent_fails(self):
+        original = deepcopy(self.record)
+        for publications in ([], [original['publications'][0]] * 2):
+            self.record = dict(original, publications=publications)
+            with self.assertRaises(ExportValidationError):
+                gds.validate_graph_snapshot()
+        cases = [('managed_by', 'wrong'), ('run_id', ''), ('window_start', None),
+                 ('window_end', METADATA['window_start']), ('published_at', None),
+                 ('published_at', 'bad-date'), ('edge_count', 2), ('edge_count', 0),
+                 ('edge_count', True), ('edge_count', -1), ('edge_count', 3.0),
+                 ('generation', True), ('generation', 0), ('generation', 1.5),
+                 ('generation', None), ('run_id', 'stale-run')]
+        for field, value in cases:
+            with self.subTest(field=field, value=value):
+                self.record = deepcopy(original)
+                self.record['publications'][0][field] = value
+                with self.assertRaises(ExportValidationError):
+                    gds.validate_graph_snapshot()
+
+    def test_generation_republication_detected_for_empty_and_nonempty(self):
+        for empty in (False, True):
+            with self.subTest(empty=empty):
+                snapshot = self.empty_snapshot() if empty else gds.validate_graph_snapshot()
+                self.record['publications'][0]['generation'] += 1
+                with self.assertRaisesRegex(ExportValidationError, 'graph changed'):
+                    gds.recreate_gds_projections(snapshot)
+
+    def test_empty_republication_between_stages_and_during_clear_detected(self):
+        state = gds.recreate_gds_projections(self.empty_snapshot())
+        state = gds.run_louvain(gds.run_pagerank(state))
+        self.record['publications'][0]['generation'] += 1
+        for stage in (gds.run_pagerank, gds.run_louvain, gds.write_metrics_to_neo4j, gds.validate_metrics):
+            with self.subTest(stage=stage.__name__), self.assertRaisesRegex(ExportValidationError, 'graph changed'):
+                stage(state)
+        self.record['publications'][0]['generation'] -= 1
+        def clear(params):
+            self.record['publications'][0]['generation'] += 1
+        self.overrides[gds.CLEAR_QUERY] = clear
+        with self.assertRaisesRegex(ExportValidationError, 'graph changed'):
+            gds.write_metrics_to_neo4j(state)
+
+    def test_empty_rejects_unexpected_projection_and_stale_metrics(self):
+        state = dict(gds.recreate_gds_projections(self.empty_snapshot()), communities=0)
+        with self.assertRaisesRegex(ExportValidationError, 'Stale Port metrics'):
+            gds.validate_metrics(state)
+        self.overrides[gds.EXISTS_QUERY] = dict(exists=True)
+        with self.assertRaisesRegex(ExportValidationError, 'Unexpected GDS projection'):
+            gds.run_pagerank(state)
 
     def test_cleanup_handles_missing_graphs_and_attempts_both_after_failure(self):
         self.assertIsNone(gds.cleanup_gds_projections())

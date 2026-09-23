@@ -12,7 +12,6 @@ DAG_FILE = Path(__file__).resolve().parents[1] / 'dags' / 'ais_gds_metrics.py'
 STAGES = (
     'validate_graph_snapshot', 'recreate_gds_projections', 'run_pagerank',
     'run_louvain', 'write_metrics_to_neo4j', 'validate_metrics',
-    'export_metrics_to_clickhouse',
 )
 CLEANUP = 'cleanup_gds_projections'
 COMPLETE = 'complete_gds_metrics'
@@ -121,7 +120,8 @@ class GdsMetricsDagTests(unittest.TestCase):
         self.assertEqual(dag['max_active_tasks'], 1)
         self.assertEqual(dag['default_args']['retries'], 2)
         self.assertEqual(dag['default_args']['retry_delay'], timedelta(minutes=1))
-        self.assertEqual(len(self.calls), 9)
+        self.assertEqual(len(self.calls), 8)
+        self.assertNotIn('export_metrics_to_clickhouse', self.tasks)
         self.assertEqual(set(self.tasks), {*STAGES, CLEANUP, COMPLETE})
         for index, name in enumerate(STAGES):
             call = self.tasks[name]

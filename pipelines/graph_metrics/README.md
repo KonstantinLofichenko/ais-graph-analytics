@@ -3,7 +3,8 @@
 Export the current Neo4j Port network's written `pageRank` and `communityId`
 properties to `analytics.port_graph_metrics` in ClickHouse. After connection
 publishing, trigger the manual Airflow DAG `ais_gds_metrics` to run GDS, write
-metrics, validate existing visit lineage, and call the existing exporter.
+metrics, and validate existing visit lineage. Then run `ais_graph_metrics_export`
+to export the validated Neo4j metrics to ClickHouse.
 The [manual Cypher scripts](../../neo4j/gds/README.md) remain available for inspection.
 Metabase configuration is separate.
 
@@ -11,7 +12,7 @@ The analytical flow is:
 
 ```text
 AIS positions -> port visits -> CONNECTED_TO graph -> Airflow ais_gds_metrics
-  -> Neo4j GDS -> pageRank/communityId write-back -> existing exporter
+  -> Neo4j GDS -> pageRank/communityId write-back -> Airflow ais_graph_metrics_export
   -> analytics.port_graph_metrics -> analytics.port_graph_metrics_enriched -> Metabase
 ```
 
@@ -64,7 +65,7 @@ The manually triggered DAG runs these stages sequentially:
 ```text
 validate snapshot -> recreate directed/undirected projections -> stream PageRank
   -> stream Louvain and collect stats -> clear/write metrics
-  -> validate written metrics -> export to ClickHouse -> always clean up projections
+  -> validate written metrics -> always clean up projections -> complete_gds_metrics
 ```
 
 Algorithm settings match the manual scripts: directed PageRank weighted by
@@ -87,7 +88,9 @@ not independently prove when the metric values were calculated.
 The DAG checks the original snapshot's run/window metadata, counts, and an
 ephemeral graph-state checksum between stages. The checksum detects relationship
 or weight changes even when the run ID is reused; it is not another run ID.
-The exporter checks the original snapshot again when reading the final metrics.
+The standalone export DAG reads and validates the current graph metadata and visit
+lineage. It does not receive the GDS DAG's captured snapshot; keep the graph stable
+between GDS completion and export.
 
 Both workflows use the fixed GDS catalog names `ais-port-connections-directed` and
 `ais-port-connections-undirected`. Keep manual GDS, connection publishing, and other

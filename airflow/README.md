@@ -70,18 +70,18 @@ Trigger the existing explicit window, using the configured `max_rows` safety cei
 
 ```sh
 docker compose exec airflow airflow dags trigger ais_port_visits \
-  --conf '{"start": "2026-09-14T08:00:00+00:00", "end": "2026-09-15T08:00:00+00:00"}'
+  --conf '{"start": "2026-09-14", "end": "2026-09-15"}'
 ```
 
-Optional override of the safety ceiling for an unusually wide window:
+Optional override of the safety ceiling for a busy day:
 
 ```sh
 docker compose exec airflow airflow dags trigger ais_port_visits \
-  --conf '{"start": "2026-09-14T08:00:00+00:00", "end": "2026-09-15T08:00:00+00:00", "max_rows": 6000000}'
+  --conf '{"start": "2026-09-14", "end": "2026-09-15", "max_rows": 6000000}'
 ```
 
-- `start`/`end` must both be supplied (or neither) as ISO-8601 timestamps with
-  timezone information, and `start` must be earlier than `end`.
+- Explicit `start`/`end` must be `YYYY-MM-DD` dates exactly one day apart.
+  They become UTC-midnight timestamps internally. Timestamp strings are rejected.
 - `max_rows` is optional; it overrides `PORT_VISITS_MAX_ROWS` as a safety guard.
 - If `start`/`end` are omitted, the DAG falls back to the rolling
   `PORT_VISITS_WINDOW_HOURS` window ending at the run's start time.
@@ -150,14 +150,14 @@ no catchup, one active run). Its stages run sequentially:
 ```text
 validate snapshot -> recreate two projections -> stream PageRank
   -> stream Louvain and collect stats -> clear/write metrics
-  -> validate metrics -> existing exporter -> always clean up projections
+  -> validate metrics -> always clean up projections -> complete_gds_metrics
 ```
 
 It uses the [manual GDS workflow's](../neo4j/gds/README.md) algorithm settings and
 the same configured Neo4j connection, user, and database throughout. Algorithm
 writes recompute results, as the manual scripts do; numeric Louvain community
-labels need not match between stream, stats, and write executions. Results go to
-`analytics.port_graph_metrics`. Metabase configuration is separate.
+labels need not match between stream, stats, and write executions. After GDS
+succeeds, `ais_graph_metrics_export` exports results to `analytics.port_graph_metrics`. Metabase configuration is separate.
 
 Apply [003_port_graph_metrics.sql](../clickhouse/migrations/003_port_graph_metrics.sql)
 manually once, then rebuild Airflow. The existing Dockerfile already copies the
@@ -233,3 +233,42 @@ To download ports manually without Airflow:
 ```sh
 .venv/bin/python pipelines/port_visits/download_ports.py --output /tmp/bergen.json
 ```
+
+
+## Sequential daily analytics
+
+Manually trigger `ais_analytics_pipeline` with inclusive `start`, exclusive `end`,
+and optional `max_rows` (otherwise the port-visits environment default applies):
+
+```sh
+docker compose exec -T airflow airflow dags trigger ais_analytics_pipeline \
+  --conf '{"start":"2026-09-01","end":"2026-09-17","max_rows":5000000}'
+```
+
+This runs 16 daily chains, each `ais_port_visits -> ais_gds_metrics ->
+ais_graph_metrics_export`, waiting for export success before the next day starts.
+A small Airflow 3 `TriggerDagRunOperator` subclass defers between child runs;
+it reconstructs progress from the child completion event on each resume. No child
+processing logic is copied. The master displays one coordinating task; child DAG
+runs show individual stages. A running triggerer and unpaused children are required.
+
+Explicit dates are required for the master; no rolling master default remains.
+Standalone port visits retains its rolling default when both keys are omitted.
+Existing callers passing explicit timestamps must switch to dates; use the existing
+pipeline CLI directly if a non-daily explicit timestamp window is needed.
+The analytical run ID still comes from the existing UTC start timestamp function,
+e.g. `2026-09-01T00:00:00Z`. Airflow child execution IDs are only orchestration IDs.
+
+Failure or an unexpected completion event stops advancement. Retries remain zero;
+clearing the coordinating task does not reset existing child runs automatically.
+For recovery, inspect the failed child and start a new master run for the desired
+remaining date range after resolving the failure. Daily ClickHouse retry semantics
+remain unchanged. Historical rows are not rewritten.
+
+Do not independently trigger graph-changing port-visits runs during the master:
+`max_active_runs=1` serializes masters but is not a global lock across child DAGs.
+GDS/export still consume current graph metadata. GDS calculates, writes, and
+validates Neo4j metrics; only the standalone export DAG writes them to ClickHouse. An empty graph still
+fails the existing GDS validation and stops the range; this refactor does not change
+that behavior. Existing `airflow/daily_run.sh` timestamp arguments also need updating
+before using them with the changed explicit Airflow interface.

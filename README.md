@@ -2,6 +2,30 @@
 
 AIS Graph Analytics collects BarentsWatch Automatic Identification System (AIS) vessel positions, streams them through Kafka and Kafka Connect, writes the current vessel state to Neo4j, and stores complete raw position history in ClickHouse.
 
+## Known limitation: port visits spanning processing-window boundaries
+
+Port-visit detection currently processes each UTC day independently.
+
+If a vessel remains continuously inside the same port across midnight, the
+physical stay may be represented as multiple daily visit fragments because:
+
+- the current daily run finalizes an active visit at the end of its input window;
+- detector state is not persisted between daily runs;
+- the next daily run starts with no knowledge of the previous observation.
+
+This can cause:
+- overcounting of physical port visits;
+- fragmented stay durations;
+- small differences in derived port-to-port connections and graph metrics.
+
+The issue was identified during data-quality testing against raw AIS observations.
+It is acceptable for the current portfolio implementation.
+
+A production implementation would use either:
+- persistent detector state across processing windows; or
+- continuous-range physical visit detection followed by daily analytical
+  projection.
+
 ## Architecture
 
 ```text

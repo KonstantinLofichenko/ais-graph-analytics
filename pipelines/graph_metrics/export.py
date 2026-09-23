@@ -21,20 +21,20 @@ OWNER = 'port-connections-v1'
 LOGGER = logging.getLogger(__name__)
 UINT64_MAX = 2**64 - 1
 
-# Metadata and endpoint membership come from one relationship scan. Collect nodes
-# before projecting their properties so duplicate portId values remain detectable.
-SNAPSHOT_QUERY = '''
-    MATCH (source:Port)-[r:CONNECTED_TO {managedBy: $owner}]->(target:Port)
-    WITH collect(DISTINCT {run_id: r.runId, window_start: r.windowStart,
-                           window_end: r.windowEnd}) AS snapshots,
-         collect(DISTINCT source) + collect(DISTINCT target) AS endpoints
+# Preserve node identity while collecting endpoints, including the empty case.
+# The durable publication and all owned edges are validated around this read.
+SNAPSHOT_QUERY = """
+    WITH $owner AS owner
+    CALL (owner) {
+        MATCH (source)-[r:CONNECTED_TO {managedBy: owner}]->(target)
+        RETURN collect(DISTINCT source) + collect(DISTINCT target) AS endpoints
+    }
     UNWIND endpoints AS port
-    WITH snapshots, collect(DISTINCT port) AS ports
-    RETURN snapshots,
-           [port IN ports | {port_id: port.portId, page_rank: port.pageRank,
+    WITH collect(DISTINCT port) AS ports
+    RETURN [port IN ports | {port_id: port.portId, page_rank: port.pageRank,
                              community_id: port.communityId,
                              visit_run_id: port.visitRunId}] AS ports
-'''
+"""
 
 
 class ExportValidationError(ValueError):
@@ -73,14 +73,30 @@ def validate_snapshot_metadata(snapshots):
     return dict(run_id=run_id, window_start=start, window_end=end)
 
 
-def build_export_rows(snapshots, ports, exported_at):
+def build_export_rows(snapshots, ports, exported_at, *, verified_snapshot=None):
     """Validate all active endpoint metrics before constructing a complete export."""
     metadata = validate_snapshot_metadata(snapshots)
-    if not ports:
-        raise ExportValidationError('Managed CONNECTED_TO snapshot has no active endpoint Ports')
     if not isinstance(exported_at, datetime) or exported_at.tzinfo is None:
         raise ExportValidationError('exported_at must be a timezone-aware datetime')
     exported_at = exported_at.astimezone(timezone.utc)
+    if verified_snapshot is not None:
+        if validate_snapshot_metadata([verified_snapshot]) != metadata:
+            raise ExportValidationError('Verified snapshot identity differs from export metadata')
+        if len(ports) != verified_snapshot['nodes']:
+            raise ExportValidationError('Metric port count differs from verified active Ports')
+    if not ports:
+        # Only a state returned by the durable snapshot reader authorizes no rows.
+        if (verified_snapshot is not None
+                and type(verified_snapshot.get('relationships')) is int
+                and verified_snapshot['relationships'] == 0
+                and type(verified_snapshot.get('nodes')) is int
+                and verified_snapshot['nodes'] == 0
+                and type(verified_snapshot.get('generation')) is int
+                and verified_snapshot['generation'] > 0
+                and verified_snapshot.get('published_at')
+                and verified_snapshot.get('graph_state')):
+            return []
+        raise ExportValidationError('Managed CONNECTED_TO snapshot has no active endpoint Ports')
     rows = []
     seen = set()
     for port in ports:
@@ -112,18 +128,22 @@ def build_export_rows(snapshots, ports, exported_at):
     return sorted(rows, key=lambda row: row['port_id'])
 
 
+def _check_source_snapshot(tx, expected):
+    # Reuse the durable publication contract without importing GDS at module load.
+    from pipelines.graph_metrics.gds import _assert_snapshot, _read_snapshot
+    current = _read_snapshot(tx)
+    if expected is not None:
+        _assert_snapshot(expected, current)
+    return current
+
+
 def read_graph_snapshot(tx, expected_snapshot=None):
-    if expected_snapshot is not None:
-        # Local import keeps the standalone exporter independent of the GDS task
-        # workflow, while pinning that workflow's original graph during export.
-        from pipelines.graph_metrics.gds import _assert_snapshot, _read_snapshot
-        _assert_snapshot(expected_snapshot, _read_snapshot(tx))
+    snapshot = _check_source_snapshot(tx, expected_snapshot)
     record = tx.run(SNAPSHOT_QUERY, owner=OWNER).single()
     if record is None:
-        raise ExportValidationError('No managed CONNECTED_TO snapshot is available to export')
-    if expected_snapshot is not None:
-        _assert_snapshot(expected_snapshot, _read_snapshot(tx))
-    return record['snapshots'], record['ports']
+        raise ExportValidationError('No metric endpoint result for the verified snapshot')
+    _check_source_snapshot(tx, snapshot)
+    return [snapshot], record['ports']
 
 
 def validate_canonical_ports(ch, rows):
@@ -144,20 +164,27 @@ def export_metrics(expected_snapshot=None):
         driver.verify_connectivity()
         with driver.session(database=os.getenv('NEO4J_DATABASE', 'neo4j')) as session:
             snapshots, ports = session.execute_read(read_graph_snapshot, expected_snapshot)
-    rows = build_export_rows(snapshots, ports, datetime.now(timezone.utc))
-    ch = ClickHouse()
-    try:
-        validate_canonical_ports(ch, rows)
-        ch.insert('port_graph_metrics', rows)
-    finally:
-        ch.session.close()
+            snapshot = snapshots[0]
+            metadata = validate_snapshot_metadata(snapshots)
+            rows = build_export_rows(snapshots, ports, datetime.now(timezone.utc),
+                                     verified_snapshot=snapshot)
+            if rows:
+                ch = ClickHouse()
+                try:
+                    validate_canonical_ports(ch, rows)
+                    session.execute_read(_check_source_snapshot, snapshot)
+                    ch.insert('port_graph_metrics', rows)
+                finally:
+                    ch.session.close()
+            else:
+                session.execute_read(_check_source_snapshot, snapshot)
 
-    first = rows[0]
-    summary = dict(run_id=first['run_id'], window_start=first['window_start'].isoformat(),
-                   window_end=first['window_end'].isoformat(), snapshot_date=first['snapshot_date'],
+    summary = dict(run_id=metadata['run_id'], window_start=metadata['window_start'].isoformat(),
+                   window_end=metadata['window_end'].isoformat(),
+                   snapshot_date=metadata['window_end'].date().isoformat(),
                    ports=len(rows), communities=len({row['community_id'] for row in rows}),
-                   min_page_rank=min(row['page_rank'] for row in rows),
-                   max_page_rank=max(row['page_rank'] for row in rows))
+                   min_page_rank=min((row['page_rank'] for row in rows), default=None),
+                   max_page_rank=max((row['page_rank'] for row in rows), default=None))
     LOGGER.info('Port graph metrics: run_id=%s window_start=%s window_end=%s ports=%d '
                 'communities=%d min_page_rank=%s max_page_rank=%s',
                 summary['run_id'], summary['window_start'], summary['window_end'],

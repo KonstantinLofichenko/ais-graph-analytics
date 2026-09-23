@@ -23,7 +23,16 @@ LOUVAIN_CONFIG = dict(relationshipWeightProperty='movementCount', concurrency=1)
 # Scan all owned relationships, including malformed non-Port endpoints, so none
 # can be silently excluded from snapshot validation.
 SNAPSHOT_QUERY = '''
-    MATCH (source)-[r:CONNECTED_TO {managedBy: $owner}]->(target)
+    WITH $owner AS owner
+    CALL (owner) {
+        MATCH (s:ConnectionSnapshot {managedBy: owner})
+        RETURN collect({managed_by: s.managedBy, run_id: s.runId,
+                        window_start: s.windowStart, window_end: s.windowEnd,
+                        edge_count: s.edgeCount, generation: s.generation,
+                        published_at: s.publishedAt}) AS publications
+    }
+    CALL (owner) {
+    MATCH (source)-[r:CONNECTED_TO {managedBy: owner}]->(target)
     RETURN collect(DISTINCT {run_id: r.runId, window_start: r.windowStart,
                              window_end: r.windowEnd}) AS snapshots,
            collect({relationship_id: elementId(r), source_id: elementId(source),
@@ -31,6 +40,8 @@ SNAPSHOT_QUERY = '''
                     target_port_id: target.portId, source_is_port: source:Port,
                     source_visit_run_id: source.visitRunId, target_visit_run_id: target.visitRunId,
                     target_is_port: target:Port, movement_count: r.movementCount}) AS connections
+    }
+    RETURN publications, snapshots, connections
 '''
 
 # Same Cypher aggregation projection as 01_project_graphs.cypher. An empty
@@ -47,6 +58,10 @@ PROJECT_QUERY = '''
 LIST_QUERY = '''CALL gds.graph.list($graph)
     YIELD graphName, nodeCount, relationshipCount, creationTime
     RETURN graphName, nodeCount, relationshipCount, creationTime'''
+EXISTS_QUERY = 'CALL gds.graph.exists($graph) YIELD exists RETURN exists'
+STALE_METRICS_QUERY = '''MATCH (port:Port)
+    WHERE port.pageRank IS NOT NULL OR port.communityId IS NOT NULL
+    RETURN count(port) AS stale_ports'''
 DROP_QUERY = 'CALL gds.graph.drop($graph, false) YIELD graphName RETURN graphName'
 PAGERANK_QUERY = '''CALL gds.pageRank.stream($graph, $configuration) YIELD nodeId, score
     RETURN count(*) AS nodes, min(score) AS min_page_rank, max(score) AS max_page_rank'''
@@ -94,10 +109,23 @@ def _single(result):
 
 def _read_snapshot(tx):
     record = _single(tx.run(SNAPSHOT_QUERY, owner=OWNER))
-    metadata = validate_snapshot_metadata(record['snapshots'])
+    publications = record.get('publications', [])
+    if len(publications) != 1:
+        raise ExportValidationError('Exactly one ConnectionSnapshot publication is required')
+    publication = publications[0]
+    if publication.get('managed_by') != OWNER:
+        raise ExportValidationError('ConnectionSnapshot managedBy does not match publisher')
+    metadata = validate_snapshot_metadata([publication])
+    for field, minimum in (('edge_count', 0), ('generation', 1)):
+        value = publication.get(field)
+        if isinstance(value, bool) or not isinstance(value, int) or value < minimum:
+            raise ExportValidationError(f'ConnectionSnapshot {field} must be an integer >= {minimum}')
+    published_at = metrics_export._utc_datetime(publication.get('published_at'), 'publishedAt').isoformat()
     connections = record['connections']
-    if not connections:
-        raise ExportValidationError('No managed CONNECTED_TO snapshot is available')
+    if len(connections) != publication['edge_count']:
+        raise ExportValidationError('ConnectionSnapshot edgeCount differs from actual managed graph')
+    if connections and validate_snapshot_metadata(record['snapshots']) != metadata:
+        raise ExportValidationError('ConnectionSnapshot metadata differs from managed relationships')
     nodes = set()
     for row in connections:
         if not row['source_is_port'] or not row['target_is_port']:
@@ -116,11 +144,13 @@ def _read_snapshot(tx):
     return dict(run_id=metadata['run_id'], window_start=metadata['window_start'].isoformat(),
                 window_end=metadata['window_end'].isoformat(), relationships=len(connections),
                 movements=sum(row['movement_count'] for row in connections), nodes=len(nodes),
+                generation=publication['generation'], published_at=published_at,
                 graph_state=hashlib.sha256(state.encode()).hexdigest())
 
 
 def _assert_snapshot(expected, current):
-    keys = ('run_id', 'window_start', 'window_end', 'relationships', 'movements', 'nodes', 'graph_state')
+    keys = ('run_id', 'window_start', 'window_end', 'relationships', 'movements', 'nodes', 'graph_state',
+            'generation', 'published_at')
     if any(expected[key] != current[key] for key in keys):
         raise ExportValidationError('Managed CONNECTED_TO graph changed during GDS calculation; '
                                     'rerun the entire workflow for the current snapshot')
@@ -160,6 +190,13 @@ def _catalog_entry(session, graph):
 
 
 def _check_projections(session, state):
+    if state['relationships'] == 0:
+        if state['projections']:
+            raise ExportValidationError('Empty snapshot must have absent projections')
+        for graph in (DIRECTED, UNDIRECTED):
+            if _single(session.run(EXISTS_QUERY, graph=graph))['exists']:
+                raise ExportValidationError('Unexpected GDS projection for empty snapshot')
+        return
     for graph in (DIRECTED, UNDIRECTED):
         if _catalog_entry(session, graph) != state['projections'][graph]:
             raise ExportValidationError('GDS projection changed or was recreated; rerun the entire workflow')
@@ -170,6 +207,11 @@ def recreate_gds_projections(snapshot):
         _assert_snapshot(snapshot, session.execute_read(_read_snapshot))
         _drop_projections(session)
         projections = {}
+        if snapshot['relationships'] == 0:
+            state = dict(snapshot, projections={}, directed_relationships=0)
+            _check_projections(session, state)
+            _assert_snapshot(snapshot, session.execute_read(_read_snapshot))
+            return state
         for graph, configuration, multiplier in (
                 (DIRECTED, {}, 1),
                 (UNDIRECTED, {'undirectedRelationshipTypes': ['CONNECTED_TO']}, 2)):
@@ -190,10 +232,15 @@ def recreate_gds_projections(snapshot):
 
 def run_pagerank(state):
     with _session() as session:
+        _assert_snapshot(state, session.execute_read(_read_snapshot))
         _check_projections(session, state)
+        if state['relationships'] == 0:
+            _assert_snapshot(state, session.execute_read(_read_snapshot))
+            return dict(state, min_page_rank=None, max_page_rank=None)
         row = _single(session.run(PAGERANK_QUERY, graph=DIRECTED, configuration=PAGERANK_CONFIG))
         if row['nodes'] != state['nodes']:
             raise ExportValidationError('PageRank node count differs from the projected active Ports')
+        _assert_snapshot(state, session.execute_read(_read_snapshot))
     LOGGER.info('GDS PageRank: nodes=%d min_page_rank=%s max_page_rank=%s',
                 row['nodes'], row['min_page_rank'], row['max_page_rank'])
     # As in the manual workflow, retain the projections, not per-node XCom data.
@@ -203,11 +250,16 @@ def run_pagerank(state):
 
 def run_louvain(state):
     with _session() as session:
+        _assert_snapshot(state, session.execute_read(_read_snapshot))
         _check_projections(session, state)
+        if state['relationships'] == 0:
+            _assert_snapshot(state, session.execute_read(_read_snapshot))
+            return dict(state, communities=0, modularity=None, ran_levels=0)
         preview = _single(session.run(LOUVAIN_QUERY, graph=UNDIRECTED, configuration=LOUVAIN_CONFIG))
         if preview['nodes'] != state['nodes']:
             raise ExportValidationError('Louvain node count differs from the projected active Ports')
         stats = _single(session.run(LOUVAIN_STATS_QUERY, graph=UNDIRECTED, configuration=LOUVAIN_CONFIG))
+        _assert_snapshot(state, session.execute_read(_read_snapshot))
     LOGGER.info('GDS Louvain: communityCount=%d modularity=%s ranLevels=%d',
                 stats['communityCount'], stats['modularity'], stats['ranLevels'])
     return dict(state, communities=stats['communityCount'], modularity=stats['modularity'],
@@ -220,6 +272,10 @@ def write_metrics_to_neo4j(state):
         _check_projections(session, state)
         # Separate commits match 05_write_back.cypher; visit metadata is read-only.
         session.run(CLEAR_QUERY).consume()
+        if state['relationships'] == 0:
+            _check_projections(session, state)
+            _assert_snapshot(state, session.execute_read(_read_snapshot))
+            return dict(state, nodes_written=0, communities=0, modularity=None)
         pagerank = _single(session.run(PAGERANK_WRITE_QUERY, graph=DIRECTED,
                                       configuration=dict(PAGERANK_CONFIG, writeProperty='pageRank')))
         louvain = _single(session.run(LOUVAIN_WRITE_QUERY, graph=UNDIRECTED,
@@ -238,6 +294,13 @@ def write_metrics_to_neo4j(state):
 def _validated_metrics(tx, state):
     _assert_snapshot(state, _read_snapshot(tx))
     _check_projections(tx, state)
+    if state['relationships'] == 0:
+        if state['nodes'] != 0 or state['communities'] != 0:
+            raise ExportValidationError('Empty snapshot must have zero nodes and communities')
+        if _single(tx.run(STALE_METRICS_QUERY))['stale_ports']:
+            raise ExportValidationError('Stale Port metrics remain after empty snapshot cleanup')
+        _assert_snapshot(state, _read_snapshot(tx))
+        return []
     ports = _single(tx.run(METRICS_QUERY, graph=DIRECTED))['ports']
     rows = metrics_export.build_export_rows([state], ports, datetime.now(timezone.utc))
     if len(rows) != state['nodes']:
@@ -251,8 +314,8 @@ def _validated_metrics(tx, state):
 def validate_metrics(state):
     with _session() as session:
         rows = session.execute_read(_validated_metrics, state)
-    return dict(state, min_page_rank=min(row['page_rank'] for row in rows),
-                max_page_rank=max(row['page_rank'] for row in rows))
+    return dict(state, min_page_rank=min((row['page_rank'] for row in rows), default=None),
+                max_page_rank=max((row['page_rank'] for row in rows), default=None))
 
 
 def export_metrics_to_clickhouse(state):

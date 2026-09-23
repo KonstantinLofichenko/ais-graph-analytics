@@ -28,7 +28,7 @@ def ais_port_visits():
         from ais_port_visits_window import resolve_window
 
         context = get_current_context()
-        # Explicit dag_run.conf start/end/max_rows override the rolling default;
+        # Explicit start/end dates resolve to one UTC-midnight day;
         # the rolling default still uses dag_run.start_date so retries stay deterministic.
         start, end, max_rows, source = resolve_window(
             context['dag_run'].conf, context['dag_run'].start_date,

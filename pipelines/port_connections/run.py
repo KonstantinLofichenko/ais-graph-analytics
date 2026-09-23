@@ -71,7 +71,11 @@ def read_completed_visits(ch, metadata):
 
 
 def graph_snapshot(tx, connections, metadata):
-    """Atomically validate endpoints and replace only owned Port-to-Port edges."""
+    """Atomically replace owned edges and publish durable snapshot metadata."""
+    # Lock this owner's snapshot before replacing edges. Failed transactions also
+    # roll back this increment; successful republishes get a new generation.
+    tx.run('''MERGE (s:ConnectionSnapshot {managedBy: $owner})
+              SET s.generation = coalesce(s.generation, 0) + 1''', owner=OWNER).consume()
     port_ids = sorted({row[field] for row in connections
                        for field in ('from_port_id', 'to_port_id')})
     if port_ids:
@@ -102,6 +106,25 @@ def graph_snapshot(tx, connections, metadata):
             # A disappeared/duplicate endpoint must roll back deletion and all batches.
             raise RuntimeError(f'Port connection endpoint match failed: expected {len(rows)} '
                                f'relationships, published {published}')
+
+    # Do not restrict endpoint labels here: malformed owned edges must fail,
+    # not disappear from the count or masquerade as a valid empty snapshot.
+    final = tx.run('''MATCH (a)-[r:CONNECTED_TO]->(b)
+        WHERE r.managedBy = $owner
+        RETURN count(r) AS edge_count,
+               sum(CASE WHEN a:Port AND b:Port THEN 0 ELSE 1 END) AS malformed''',
+                   owner=OWNER).single()
+    if final['malformed']:
+        raise RuntimeError('Managed CONNECTED_TO relationships must have two Port endpoints')
+    if final['edge_count'] != len(connections):
+        raise RuntimeError(f'Port connection final edge count mismatch: expected {len(connections)}, '
+                           f'actual {final["edge_count"]}')
+
+    tx.run('''MATCH (s:ConnectionSnapshot {managedBy: $owner})
+        SET s.runId = $run_id, s.windowStart = datetime($window_start),
+            s.windowEnd = datetime($window_end), s.edgeCount = $edge_count,
+            s.publishedAt = datetime()''',
+           owner=OWNER, edge_count=final['edge_count'], **metadata).consume()
 
 
 def publish_connections(connections, metadata):
