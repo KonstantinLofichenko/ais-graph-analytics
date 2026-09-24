@@ -4,6 +4,21 @@ AIS Graph Analytics collects vessel positions through Kafka or HAIS historical
 files, stores canonical AIS observations in ClickHouse, and builds port-visit and
 Neo4j/GDS graph snapshots for analysis with dbt and optional Metabase.
 
+## Continuous integration
+
+[The CI workflow](.github/workflows/ci.yml) runs on pushes, pull requests, and
+manual dispatch. It validates tracked Bash scripts and all Compose profiles,
+builds the project Airflow image, runs pipeline/Airflow and producer unit tests,
+and parses dbt with the example profile and a placeholder password. No repository
+secrets or running databases are required. Pipeline/Airflow tests run in a
+container with networking disabled and a read-only checkout.
+
+The pipeline test runner is [scripts/ci-unit-tests.sh](scripts/ci-unit-tests.sh).
+Run it in the Airflow image as shown in the workflow; each suite uses a separate
+Python process. CI excludes the live-database integration check and does not run
+`dbt build`, ingest AIS data, or replace runtime acceptance and backup/restore
+checks. A successful `dbt parse` validates project parsing, not database queries.
+
 ## Fresh-clone quickstart
 
 Run commands from the repository root in **Bash**, keeping the same shell for the

@@ -1,0 +1,92 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  configuration:
+    name: Shell and Compose validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Check tracked shell scripts
+        shell: bash
+        run: |
+          while IFS= read -r -d '' script; do
+            bash -n "$script"
+          done < <(git ls-files -z '*.sh')
+      - name: Validate all Compose profiles with example configuration
+        run: |
+          cp .env.example .env
+          docker compose --env-file .env.example --profile '*' config --quiet
+
+  pipelines:
+    name: Pipeline and Airflow unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Build the project Airflow image
+        run: docker build --file airflow/Dockerfile --tag ais-airflow-ci .
+      - name: Run isolated tests without network or live services
+        run: |
+          docker run --rm --network none \
+            --volume "$PWD:/workspace:ro" --workdir /workspace \
+            --env PYTHONDONTWRITEBYTECODE=1 \
+            --env AIRFLOW_HOME=/tmp/airflow-ci \
+            --env AIRFLOW__CORE__LOAD_EXAMPLES=false \
+            --env AIRFLOW__CORE__DAGS_FOLDER=/tmp/airflow-ci/dags \
+            --entrypoint bash ais-airflow-ci scripts/ci-unit-tests.sh
+
+  producer:
+    name: Producer unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: producers/ais/requirements.txt
+      - run: python -m pip install -r producers/ais/requirements.txt
+      - run: python -m unittest discover -s producers/ais/tests -v
+
+  dbt:
+    name: dbt parse
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      DBT_ENV_SECRET_CLICKHOUSE_PASSWORD: ci-placeholder-not-a-secret
+      CLICKHOUSE_USER: default
+      DBT_SEND_ANONYMOUS_USAGE_STATS: 'false'
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: dbt/requirements.txt
+      - run: python -m pip install -r dbt/requirements.txt
+      - name: Parse using the example profile without connecting to ClickHouse
+        run: |
+          cp dbt/profiles.yml.example dbt/profiles.yml
+          dbt parse --project-dir dbt --profiles-dir dbt --no-partial-parse

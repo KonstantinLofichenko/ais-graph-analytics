@@ -14,6 +14,8 @@
 !pipelines/historic_ais/
 !pipelines/historic_ais/*.py
 !pipelines/historic_ais/requirements.txt
+!pipelines/hais/
+!pipelines/hais/*.py
 !clickhouse/
 !clickhouse/init/
 !clickhouse/init/02_port_visits.sql
