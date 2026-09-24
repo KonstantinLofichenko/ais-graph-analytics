@@ -18,20 +18,17 @@ AIS positions -> port visits -> CONNECTED_TO graph -> Airflow ais_gds_metrics
 
 ## Setup and execution
 
-Apply the [manual migration](../../clickhouse/migrations/003_port_graph_metrics.sql)
-from the repository root. It does not run automatically at Docker startup:
-
-```sh
-docker exec -i ais-clickhouse sh -c \
-  'clickhouse-client --user "$CLICKHOUSE_USER" --password "$CLICKHOUSE_PASSWORD" --multiquery' \
-  < clickhouse/migrations/003_port_graph_metrics.sql
-```
+Complete the [fresh-clone quickstart](../../README.md#fresh-clone-quickstart).
+Its bootstrap applies [003_port_graph_metrics.sql](../../clickhouse/migrations/003_port_graph_metrics.sql).
+The daily master sequences GDS and export; the standalone commands below are for
+operating on an already published snapshot after setup.
 
 The exporter uses the existing port-visit Python dependencies and root `.env`
 configuration: `CLICKHOUSE_URL`, `CLICKHOUSE_USER`, `CLICKHOUSE_PASSWORD`,
 `NEO4J_URI`, `NEO4J_USER`, `NEO4J_PASSWORD`, and `NEO4J_DATABASE`. No new dependencies
 are needed. To export already validated metrics without rerunning GDS,
-run locally from the repository root:
+use the [optional host Python environment](../port_visits/README.md#run-from-the-repository-root)
+and run from the repository root:
 
 ```sh
 .venv/bin/python pipelines/graph_metrics/export.py
@@ -41,11 +38,9 @@ run locally from the repository root:
 
 Airflow reuses the existing Compose database environment, Neo4j user, and database
 for every GDS stage. `ais_gds_metrics` has `schedule=None`, no catchup, and one active
-run. Rebuild Airflow because its existing `COPY` instructions include the changed
-pipeline code and new DAG; no Dockerfile change is needed:
+run. With Airflow already running, trigger GDS independently with:
 
 ```sh
-docker compose --profile batch up -d --build airflow
 docker compose exec airflow airflow dags unpause ais_gds_metrics
 docker compose exec airflow airflow dags trigger ais_gds_metrics
 ```
@@ -107,8 +102,11 @@ projections and their metrics.
 
 Only Ports at either end of a Port-to-Port `CONNECTED_TO` relationship with
 `managedBy = 'port-connections-v1'` are exported. Isolated Ports and unrelated
-relationships are excluded. The selected relationships must identify exactly one
-`runId` and one valid, timezone-aware `windowStart`/`windowEnd` interval.
+relationships are excluded. A durable `ConnectionSnapshot` owned by
+`port-connections-v1` identifies the run/window, edge count, publication generation,
+and publication time. Relationship metadata and count must match that publication.
+GDS and export recheck it to detect graph changes. Missing or inconsistent metadata
+fails; a valid published empty snapshot skips GDS calculation and exports zero rows.
 
 All active Ports must have a finite, nonnegative `pageRank`, a `communityId`
 representable as `UInt64`, and `visitRunId` equal to the current managed run
@@ -153,28 +151,26 @@ a separate decision.
 reference dimensions. Names, coordinates, and country descriptions stay in those
 dimensions instead of being duplicated in `analytics.port_graph_metrics`. The view
 uses left joins on `g.port_id = p.port_id` and `p.country = c.country_code`.
-Both dimensions are read with `FINAL`, providing their latest descriptions rather
-than historical attributes for each metric snapshot. Metric facts are also read
+Ports are read with `FINAL`; country descriptions come from the current dbt-built
+`countries` table. These are current descriptions, not historical snapshot attributes. Metric facts are also read
 with `FINAL` through the subquery aliased as `g`. The enriched Metabase view exposes
 one logically deduplicated row per `(run_id, port_id)`, using the latest
 `exported_at`, without exposing physical retry versions before background merges.
 
-After initializing `analytics.ports` and applying
-[002_countries.sql](../../clickhouse/migrations/002_countries.sql) and
-[003_port_graph_metrics.sql](../../clickhouse/migrations/003_port_graph_metrics.sql),
-apply the [view migration](../../clickhouse/migrations/004_port_graph_metrics_enriched.sql)
-manually from the repository root:
+The view is now built by the
+[dbt model](../../dbt/models/marts/port_graph_metrics_enriched.sql), not a manual SQL
+migration. Follow [dbt setup](../../dbt/README.md), including the optional
+`raw.countries` prerequisite, then run from the repository root:
 
 ```sh
-docker exec -i ais-clickhouse sh -c \
-  'clickhouse-client --user "$CLICKHOUSE_USER" --password "$CLICKHOUSE_PASSWORD" --multiquery' \
-  < clickhouse/migrations/004_port_graph_metrics_enriched.sql
+dbt build --project-dir dbt --select +countries +port_graph_metrics_enriched
 ```
 
-The view is a convenient Metabase source for a geographic map using `latitude` and
-`longitude`, rankings by `page_rank`, Louvain groups by `community_id`, and filters
-on `snapshot_date` or `run_id`. This migration adds no Metabase configuration or
-dbt models and requires no exporter changes.
+Skip this country-dependent view on a fresh installation without the external
+Airbyte country source. The core HAIS/canonical AIS workflow does not require it.
+The view supports geographic maps using `latitude`/`longitude`, rankings by
+`page_rank`, Louvain groups by `community_id`, and snapshot/run filters. No Metabase
+configuration is added by dbt.
 
 ### First real export (historical hash ID)
 

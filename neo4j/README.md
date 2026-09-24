@@ -20,3 +20,6 @@ Normal ingestion remains:
 Live AIS        -> Kafka   -> Neo4j
 Historical AIS  -> Airflow -> ClickHouse
 Derived graph   -> Airflow -> Neo4j
+```
+
+For local installation, follow the [fresh-clone quickstart](../README.md#fresh-clone-quickstart).

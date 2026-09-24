@@ -12,18 +12,24 @@ The target uses `ReplacingMergeTree(ingested_at)` with logical key `(mmsi, msgti
 
 Required variables are documented in the root `.env.example`: BarentsWatch credentials and token URL, `BW_HISTORIC_BASE_URL`, `BW_HISTORIC_SCOPE`, `BW_HISTORIC_POLYGON_JSON`, request timeout, batch size, and ClickHouse connection settings. The current Bergen pilot polygon is the example default.
 
-Manual local run:
+This REST repair/backfill workflow is separate from HAIS file ingestion and is not
+part of the daily analytics master. Complete the
+[fresh-clone quickstart](../../README.md#fresh-clone-quickstart) first.
+
+Optional host CLI (requires its own Python dependencies):
 
 ```sh
-python pipelines/historic_ais/run.py \
+python3 -m venv .venv
+.venv/bin/python -m pip install -r pipelines/historic_ais/requirements.txt
+.venv/bin/python pipelines/historic_ais/run.py \
   --start 2026-09-01T00:00:00Z \
   --end 2026-09-02T00:00:00Z
 ```
 
-The DAG `ais_historic_ingestion` is manual-only and computes a deterministic window from the Airflow run start time using `BW_HISTORIC_WINDOW_HOURS`. Trigger it with:
+The DAG `ais_historic_ingestion` is manual-only and computes a deterministic window from the Airflow run start time using `BW_HISTORIC_WINDOW_HOURS`. With Airflow already running, trigger it with:
 
 ```sh
-docker compose --profile batch up -d --build airflow
+docker compose exec airflow airflow dags unpause ais_historic_ingestion
 docker compose exec airflow airflow dags trigger ais_historic_ingestion
 ```
 
@@ -39,13 +45,11 @@ docker compose logs -f airflow
 Validate the ClickHouse result after a successful run:
 
 ```sh
-docker exec ais-clickhouse clickhouse-client \
-  --user "$CLICKHOUSE_USER" \
-  --password "$CLICKHOUSE_PASSWORD" \
-  --query "SELECT count() AS physical_rows, uniqExact((mmsi, msgtime)) AS logical_events FROM raw.ais_positions"
+docker compose exec -T clickhouse sh -c \
+  'clickhouse-client --user "$CLICKHOUSE_USER" --password "$CLICKHOUSE_PASSWORD" \
+  --query "SELECT count() AS physical_rows, uniqExact((mmsi, msgtime)) AS logical_events FROM raw.ais_positions"'
 
-docker exec ais-clickhouse clickhouse-client \
-  --user "$CLICKHOUSE_USER" \
-  --password "$CLICKHOUSE_PASSWORD" \
-  --query "SELECT min(msgtime), max(msgtime), count(), uniqExact(mmsi) FROM raw.ais_positions"
+docker compose exec -T clickhouse sh -c \
+  'clickhouse-client --user "$CLICKHOUSE_USER" --password "$CLICKHOUSE_PASSWORD" \
+  --query "SELECT min(msgtime), max(msgtime), count(), uniqExact(mmsi) FROM raw.ais_positions"'
 ```

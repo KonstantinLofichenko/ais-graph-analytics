@@ -22,21 +22,12 @@ The nested ClickHouse mount does not hide files already in the user_files root.
 Move/copy any existing sample into the shared host directory before using this DAG.
 Its original successful audit record is still recognized regardless of location.
 
-Apply migrations `004_hais_positions.sql` and `005_hais_ingestion_runs.sql` first.
-The audit table must have `row_count Nullable(UInt64)`. The DAG creates no tables.
-Then deploy the changed image and mounts (these commands restart services):
-
-```sh
-mkdir -p data/hais
-docker compose --profile batch up -d --build airflow clickhouse
-```
-
-Unpause the new DAG in Airflow before triggering:
-
-```sh
-docker compose exec -T airflow airflow dags trigger ais_hais_historical_ingestion \
-  --conf '{"start_date":"2026-09-01","end_date":"2026-09-01"}'
-```
+For installation, migration application, Airflow startup, and the first trigger,
+use [quickstart step 12](../../README.md#12-ingest-hais-and-load-canonical-ais)
+after completing bootstrap. Bootstrap applies migrations `004_hais_positions.sql`
+and `005_hais_ingestion_runs.sql`; the audit table requires
+`row_count Nullable(UInt64)`. The DAG creates no tables. See
+[Airflow operations](../../airflow/README.md#start-and-stop) when redeploying code.
 
 Both required parameters are calendar dates in `YYYY-MM-DD` format, inclusive.
 Timestamps, invalid dates, missing parameters, and reversed ranges fail validation.
@@ -110,3 +101,13 @@ docker compose exec -T airflow bash -c \
 
 The separate DAG parse/parameter tests are in
 `airflow/tests/test_ais_hais_historical_ingestion.py` and require Airflow 3.3.1.
+
+
+## Next: canonical AIS and dbt
+
+Raw ingestion keeps `raw.hais_positions` source-faithful. Continue with the
+[dbt setup and HAIS → canonical AIS workflow](../../dbt/README.md) to create
+`stg_hais_positions`, load `raw.ais_positions`, and build downstream models.
+The ingestion DAG's end date is **inclusive**; the dbt load macro's end date is
+**exclusive**. For September 1–16, ingest through September 16, then invoke the
+macro with `end_date: 2026-09-17`. Country enrichment is optional.

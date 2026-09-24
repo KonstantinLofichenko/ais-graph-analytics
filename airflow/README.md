@@ -8,10 +8,11 @@ replace it for a production deployment.
 
 ## Start and stop
 
-From the AIS repository, with ClickHouse and Neo4j already running:
+For first installation and startup, follow the
+[fresh-clone quickstart](../README.md#fresh-clone-quickstart), including its `batch`
+profile step. Stop only Airflow from the repository root with:
 
 ```sh
-docker compose --profile batch up -d --build airflow
 docker compose stop airflow
 ```
 
@@ -24,12 +25,12 @@ docker compose exec airflow cat /opt/airflow/simple_auth_manager_passwords.json.
 
 Rebuild after changing the DAG or pipeline code, including the
 `pipelines/port_connections` and `pipelines/graph_metrics` modules: the Docker image
-uses `COPY`, so restarting alone does not load these changes. Use the
-`up -d --build airflow` command above.
+uses `COPY`, so restarting alone does not load these changes. After code changes,
+run `docker compose --profile batch up -d --build airflow` from the repository root.
 The image copies only explicitly allowed code and SQL files, never root `.env`.
 Compose injects only the database
 credentials required by this batch. Inside Docker the targets are
-`http://ais-clickhouse:8123` and `bolt://ais-neo4j:7687`.
+`http://ais-clickhouse:8123` and `bolt://neo4j:7687`.
 
 ## Three tasks
 
@@ -96,7 +97,8 @@ docker compose exec airflow airflow dags trigger ais_port_visits \
   of `end`, pipeline version, dataset/configuration, source rows, wall-clock time,
   and Airflow run/task IDs. Fractional seconds are omitted only from the ID;
   the resolved window bounds retain their precision.
-- Windows may span 24, 36, 48 hours, or other valid durations. Each ID has one
+- The host pipeline CLI supports 24, 36, 48 hours, or other valid durations;
+  explicit dates in this DAG must still span exactly one day. Each ID has one
   immutable stored window. Before publication writes, the visit batch checks
   `analytics.port_visit_runs FINAL` for that ID and compares both bounds as UTC
   instants at full precision. The same exact window may be retried; a different
@@ -159,15 +161,12 @@ writes recompute results, as the manual scripts do; numeric Louvain community
 labels need not match between stream, stats, and write executions. After GDS
 succeeds, `ais_graph_metrics_export` exports results to `analytics.port_graph_metrics`. Metabase configuration is separate.
 
-Apply [003_port_graph_metrics.sql](../clickhouse/migrations/003_port_graph_metrics.sql)
-manually once, then rebuild Airflow. The existing Dockerfile already copies the
-pipeline and DAG directories; rebuilding includes the new workflow:
+The quickstart's bootstrap already applies
+[003_port_graph_metrics.sql](../clickhouse/migrations/003_port_graph_metrics.sql).
+After completing setup, these standalone commands are available for inspecting
+one current snapshot; the daily master normally sequences them:
 
 ```sh
-docker exec -i ais-clickhouse sh -c \
-  'clickhouse-client --user "$CLICKHOUSE_USER" --password "$CLICKHOUSE_PASSWORD" --multiquery' \
-  < clickhouse/migrations/003_port_graph_metrics.sql
-docker compose --profile batch up -d --build airflow
 docker compose exec airflow airflow dags unpause ais_gds_metrics
 docker compose exec airflow airflow dags trigger ais_gds_metrics
 ```
@@ -189,8 +188,10 @@ docker compose exec airflow airflow dags unpause ais_graph_metrics_export
 docker compose exec airflow airflow dags trigger ais_graph_metrics_export
 ```
 
-The exporter requires exactly one valid run/window among current Port-to-Port
-`CONNECTED_TO` relationships owned by `port-connections-v1`. Every active endpoint
+The exporter requires one valid durable `ConnectionSnapshot` owned by
+`port-connections-v1`, with matching relationship metadata and edge count.
+A published empty snapshot succeeds with zero exported rows; missing publication
+metadata fails. Every active endpoint
 must have valid metrics and a matching `analytics.ports FINAL` ID; validation
 finishes before any inserts. `snapshot_date` is the UTC date of `window_end`, so
 retrying across a month boundary keeps the same partition and logical keys. Query
@@ -203,8 +204,9 @@ is a separate decision.
 
 The GDS workflow rechecks the original run/window metadata, graph counts, and an
 ephemeral graph-state checksum to detect relationship or weight changes under the
-same run ID. This checksum is not a new run identity. Export checks that original
-snapshot again during its final metric read.
+same run ID. It also checks durable publication generation and timestamp. This
+checksum is not a new run identity. The separate exporter captures and rechecks
+its own snapshot; it does not receive the GDS DAG's captured snapshot.
 
 Manual GDS, connection publishing, and other graph writers must not overlap this
 workflow. It uses the same fixed catalog names as the manual scripts:
@@ -217,8 +219,25 @@ for local execution and validation.
 
 ## Checks
 
+The Airflow image provides the DAG test dependencies; copy the current DAGs and
+tests into a temporary directory in the running container (its image does not
+include `airflow/tests`). These tests mock processing and do not trigger DAGs:
+
 ```sh
-.venv/bin/python -m unittest discover -s airflow/tests -v
+tar -cf - airflow/dags airflow/tests | docker compose exec -T airflow bash -c '
+  set -e
+  work=$(mktemp -d /tmp/ais-dag-tests.XXXXXX)
+  tar -xf - -C "$work"
+  export PYTHONPATH="$work/airflow/dags:/opt/ais"
+  export AIRFLOW__CORE__DAGS_FOLDER="$work/airflow/dags"
+  python -m unittest discover -s "$work/airflow/tests" -v
+'
+```
+
+For pipeline tests and the manual downloader, first prepare the
+[optional host environment](../pipelines/port_visits/README.md#run-from-the-repository-root).
+
+```sh
 .venv/bin/python -m unittest discover -s pipelines/port_visits/tests -v
 .venv/bin/python -m unittest discover -s pipelines/port_connections/tests -v
 .venv/bin/python -m unittest discover -s pipelines/graph_metrics/tests -v
@@ -245,6 +264,17 @@ docker compose exec -T airflow airflow dags trigger ais_analytics_pipeline \
   --conf '{"start":"2026-09-01","end":"2026-09-17","max_rows":5000000}'
 ```
 
+Or use the helper from the repository root (requires host `python3`):
+
+```sh
+bash airflow/daily_run.sh 2026-09-01 2026-09-17 5000000
+```
+
+The helper accepts `START_DATE END_DATE [MAX_ROWS]`, validates strict `YYYY-MM-DD`
+dates and a positive optional row limit, and triggers only the master DAG. Start
+is inclusive and end is exclusive; omitting `MAX_ROWS` uses the port-visits
+environment default. Airflow must already be running.
+
 This runs 16 daily chains, each `ais_port_visits -> ais_gds_metrics ->
 ais_graph_metrics_export`, waiting for export success before the next day starts.
 A small Airflow 3 `TriggerDagRunOperator` subclass defers between child runs;
@@ -268,7 +298,6 @@ remain unchanged. Historical rows are not rewritten.
 Do not independently trigger graph-changing port-visits runs during the master:
 `max_active_runs=1` serializes masters but is not a global lock across child DAGs.
 GDS/export still consume current graph metadata. GDS calculates, writes, and
-validates Neo4j metrics; only the standalone export DAG writes them to ClickHouse. An empty graph still
-fails the existing GDS validation and stops the range; this refactor does not change
-that behavior. Existing `airflow/daily_run.sh` timestamp arguments also need updating
-before using them with the changed explicit Airflow interface.
+validates Neo4j metrics; only the standalone export DAG writes them to ClickHouse.
+A valid published empty snapshot skips GDS calculation and exports zero rows, so
+the range can continue. Missing or inconsistent durable snapshot metadata fails.

@@ -1,15 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if ! neo4j status >/dev/null 2>&1; then
-  brew services start neo4j
-fi
-
-neo4j status
 docker compose up -d
 
-services=(ais-kafka kafka-connect ksqldb-server kafbat-ui)
-for attempt in {1..30}; do
+services=(ais-kafka kafka-connect ksqldb-server kafbat-ui ais-clickhouse ais-neo4j)
+for attempt in {1..90}; do
   all_healthy=true
   for service in "${services[@]}"; do
     container_status=$(docker inspect --format '{{.State.Status}}' "$service" 2>/dev/null || true)
@@ -21,7 +16,7 @@ for attempt in {1..30}; do
   if [[ "$all_healthy" == true ]]; then
     break
   fi
-  if [[ "$attempt" == 30 ]]; then
+  if [[ "$attempt" == 90 ]]; then
     docker compose ps
     exit 1
   fi

@@ -10,7 +10,13 @@ milestone.
 
 ## Run from the repository root
 
+The [fresh-clone quickstart](../../README.md#fresh-clone-quickstart) uses Docker
+Airflow for normal daily processing. The commands here are an optional host CLI
+for previews, diagnostics, and non-daily timestamp windows. Set up its separate
+Python environment first:
+
 ```sh
+python3 -m venv .venv
 .venv/bin/python -m pip install -r pipelines/port_visits/requirements.txt
 
 # Preview only: defaults to the preceding 30 days, writes no database objects.
@@ -26,7 +32,8 @@ milestone.
 Root `.env` supplies the existing ClickHouse and Neo4j passwords; no secrets are
 passed on command lines. Optional connection overrides are in `.env.example`.
 `CLICKHOUSE_URL` defaults to `http://localhost:8123`; `NEO4J_URI` defaults to
-`bolt://localhost:7687`. The batch currently runs locally, on macOS/Linux.
+`bolt://localhost:7687`. These host CLI commands run on macOS/Linux; the normal
+Airflow workflow runs the same batch inside Docker.
 
 Use fixed UTC boundaries for reproducible previews/retries (start inclusive, end exclusive):
 
@@ -202,10 +209,11 @@ there is no implicit chronological scheduling yet.
 
 ## Validate
 
+Airflow DAG tests require its separate runtime; see [Airflow checks](../../airflow/README.md#checks).
+
 ```sh
 .venv/bin/python -m unittest discover -s pipelines/port_visits/tests -v
 .venv/bin/python -m unittest discover -s pipelines/port_connections/tests -v
-.venv/bin/python -m unittest discover -s airflow/tests -v
 # Opt-in DB integration: creates/drops its own temporary database;
 # all synthetic Neo4j changes are rolled back.
 .venv/bin/python pipelines/port_visits/tests/integration_check.py

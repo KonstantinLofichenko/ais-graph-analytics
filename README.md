@@ -1,6 +1,253 @@
 # AIS Graph Analytics
 
-AIS Graph Analytics collects BarentsWatch Automatic Identification System (AIS) vessel positions, streams them through Kafka and Kafka Connect, writes the current vessel state to Neo4j, and stores complete raw position history in ClickHouse.
+AIS Graph Analytics collects vessel positions through Kafka or HAIS historical
+files, stores canonical AIS observations in ClickHouse, and builds port-visit and
+Neo4j/GDS graph snapshots for analysis with dbt and optional Metabase.
+
+## Fresh-clone quickstart
+
+Run commands from the repository root in **Bash**, keeping the same shell for the
+dbt steps. Steps marked optional can be skipped. The historical example processes
+September 1–16, 2026; substitute dates for files you actually have.
+
+| Component | How it runs | When needed |
+| --- | --- | --- |
+| Kafka, Kafka Connect, ksqlDB, Kafbat UI, ClickHouse, Neo4j | Core Compose services (no profile) | Core runtime |
+| Airflow | Compose `batch` profile | HAIS ingestion and daily analytics |
+| AIS producer | Compose `live` profile | Optional live AIS ingestion |
+| Metabase | Compose `analytics` profile | Optional visualization |
+| dbt | Host Python virtual environment | HAIS normalization and analytical models |
+| Airbyte | Separately deployed; not in Compose | Optional country enrichment only |
+
+### 1. Prerequisites
+
+- Git, Docker Engine/Desktop running, and Docker Compose v2 with `--wait` support.
+- Host Bash, `curl`, `jq`, and Python 3.11 with `venv`/`pip` for dbt; `python3`
+  must also be available for the daily-run helper.
+- Network access for images, Python packages, Neo4j plugins/JDBC download, and the
+  configured UN OCHA WPI port-reference API. The Kafka connector 5.5.3 JAR is
+  already checked in under `plugins/`.
+- Available local ports listed [below](#versions-and-ports), plus ClickHouse
+  `8123`/`9000`, Neo4j Browser `7474`, optional Airflow `8080`, and Metabase `3000`.
+- For live ingestion: BarentsWatch client credentials authorized for AIS access.
+  For historical processing: manually obtained daily HAIS GeoParquet files.
+
+### 2. Clone the repository
+
+```sh
+git clone https://github.com/KonstantinLofichenko/ais-graph-analytics.git
+cd ais-graph-analytics
+```
+
+### 3. Create local environment configuration
+
+```sh
+cp .env.example .env
+```
+
+### 4. Create the shared HAIS directory
+
+```sh
+mkdir -p data/hais
+```
+
+The template sets `HAIS_HOST_DIR=./data/hais`. Both Airflow and ClickHouse mount
+this directory read-only; their container users need read/traverse permissions.
+
+### 5. Configure required local secrets
+
+Edit `.env` and set `NEO4J_PASSWORD` and `CLICKHOUSE_PASSWORD`; retain or choose
+`CLICKHOUSE_USER`. For optional live ingestion, also set `BW_AIS_CLIENT_ID` and
+`BW_AIS_CLIENT_SECRET`. Leave `AIS_MESSAGE_LIMIT` empty for continuous ingestion.
+Airbyte/country API credentials are not required for this quickstart.
+
+```sh
+cp neo4j/connectors/ais-sink.example.json neo4j/connectors/ais-sink.json
+```
+
+Edit the copied JSON: replace its password placeholder with the same Neo4j password.
+Keep `neo4j.uri` as `bolt://neo4j:7687`. `.env` and this local connector config are
+ignored by Git. Never commit secrets or share expanded `docker compose config`
+output. Airflow standalone generates its own login password; the template's
+`AIRFLOW_PASSWORD` does not configure that login.
+
+### 6. Start core Docker services
+
+```sh
+docker compose up -d --wait --wait-timeout 300
+docker compose ps
+```
+
+This starts Kafka, Kafka Connect, ksqlDB, Kafbat UI, ClickHouse, and Neo4j. The
+`live`, `batch`, and `analytics` profiles remain optional. Fresh ClickHouse volumes
+run `clickhouse/init/` automatically; existing volumes do not rerun initialization.
+
+### 7. Bootstrap tables, constraints, and the connector
+
+```sh
+./scripts/bootstrap.sh
+curl --fail --silent --show-error \
+  http://localhost:8083/connectors/ais-neo4j-sink/status | jq '.'
+```
+
+Confirm the connector and its tasks report `RUNNING`. Bootstrap creates/verifies
+`ais.positions`, applies additive migrations **003, 004, and 005**, applies all
+Neo4j constraints, and registers/updates the sink using the local JSON. It is
+rerunnable but does not reconcile existing table schemas. It does **not** run
+`001_replacing_ais_positions.sql`, dbt, or analytical DAGs.
+
+### 8. Optionally start Metabase
+
+```sh
+docker compose --profile analytics up -d metabase
+```
+
+Open [Metabase](http://localhost:3000), complete its local setup, and add ClickHouse
+using Docker hostname `clickhouse`, port `8123`, and your local credentials.
+Database connections and dashboards are not provisioned by this repository.
+Country-enriched models are optional and require the external source in step 14.
+
+### 9. Optionally start the continuous producer
+
+```sh
+AIS_MESSAGE_LIMIT= docker compose --profile live up -d --build --no-deps ais-producer
+docker compose logs --tail 30 -f ais-producer
+```
+
+This explicitly disables a message limit, including one left in an older `.env`.
+The service uses `restart: unless-stopped`. Ctrl-C exits the log viewer only;
+`docker compose stop ais-producer` stops ingestion. Airflow does not orchestrate it.
+
+### 10. Optionally run a bounded producer test
+
+**Stop the continuous producer and any host-side producers first.** Use a one-off
+container so its successful exit is not followed by a service restart:
+
+```sh
+docker compose stop ais-producer
+docker compose --profile live build ais-producer
+docker compose --profile live run --rm --no-deps \
+  -e AIS_MESSAGE_LIMIT=20 ais-producer
+```
+
+The test container is removed on exit; the continuous service remains stopped
+until explicitly started again. Twenty messages need not create twenty Vessel
+nodes because the sink merges by MMSI. See [producer validation](#producer-behavior-and-validation).
+
+### 11. Configure dbt from the profile template
+
+```bash
+python3.11 -m venv .venv-dbt
+source .venv-dbt/bin/activate
+python -m pip install -r dbt/requirements.txt
+cp dbt/profiles.yml.example dbt/profiles.yml
+export DBT_PROFILES_DIR="$PWD/dbt"
+export CLICKHOUSE_USER=default  # match your local .env
+read -r -s -p 'ClickHouse password: ' DBT_ENV_SECRET_CLICKHOUSE_PASSWORD
+printf '\n'
+export DBT_ENV_SECRET_CLICKHOUSE_PASSWORD
+dbt parse --project-dir dbt
+dbt debug --project-dir dbt
+```
+
+The password must match `.env`; dbt does not load that file automatically. The
+ignored local profile defaults to `localhost:8123` and schema `analytics`. No
+`dbt deps` is needed. Reactivate the environment and export credentials in each
+new shell. See [dbt reference](dbt/README.md) for profile overrides and version pins.
+
+### 12. Ingest HAIS and load canonical AIS
+
+Place completed, immutable files named `hais_YYYY-MM-DD.snappy.parquet` in
+`data/hais/`, one for **every date September 1–16** in this example. Files are not
+downloaded by the DAG. Then start Airflow and trigger raw ingestion:
+
+```sh
+docker compose --profile batch up -d --build --wait --wait-timeout 300 airflow
+docker compose exec -T airflow airflow dags unpause ais_hais_historical_ingestion
+docker compose exec -T airflow airflow dags trigger ais_hais_historical_ingestion \
+  --conf '{"start_date":"2026-09-01","end_date":"2026-09-16"}'
+```
+
+**Wait for success before continuing.** Use [Airflow](http://localhost:8080) and
+review `raw.hais_ingestion_runs`; see [Airflow login](airflow/README.md#start-and-stop)
+and [HAIS audit/recovery](pipelines/hais/README.md#audit-and-retry-behavior).
+Previously successful file-name/size pairs are skipped; unresolved attempts need
+manual review before a retry.
+
+`raw.hais_positions` is source-faithful: source fields, sentinel values, and
+source duplicates are retained, with geometry omitted. Build the normalization
+view and load the shared **canonical normalized** table `raw.ais_positions`:
+
+```sh
+dbt run --project-dir dbt --select stg_hais_positions
+dbt run-operation load_hais_to_ais_positions --project-dir dbt \
+  --args '{"start_date":"2026-09-01","end_date":"2026-09-17"}'
+```
+
+| Operation | Start | End | Example includes |
+| --- | --- | --- | --- |
+| HAIS file ingestion | Inclusive | **Inclusive** | September 1–16 |
+| dbt canonical load | Inclusive | **Exclusive**, UTC midnight | September 1–16 |
+| Daily analytics | Inclusive | **Exclusive**, UTC midnight | September 1–16 |
+
+Supply valid, trusted dates to the macro: it interpolates SQL and does not validate
+the date range. It performs an INSERT, with no success ledger; reruns add physical
+versions resolved by `ReplacingMergeTree`. Overlapping HAIS loads can replace
+live/REST records, including names/ship types with HAIS NULLs. Review source
+coverage before loading. See [load details](dbt/README.md#4-load-a-bounded-range-into-canonical-ais).
+
+### 13. Run daily analytics
+
+Unpause the master and its independently runnable children, then trigger only the
+master for the same canonical date range:
+
+```sh
+for dag in ais_port_visits ais_gds_metrics ais_graph_metrics_export ais_analytics_pipeline; do
+  docker compose exec -T airflow airflow dags unpause "$dag"
+done
+bash airflow/daily_run.sh 2026-09-01 2026-09-17 5000000
+```
+
+This runs 16 sequential daily chains:
+`ais_port_visits -> ais_gds_metrics -> ais_graph_metrics_export -> next day`.
+Wait for master success before continuing. Each next day waits for the previous
+export; a failure stops advancement. `max_rows` is a per-day safety ceiling, not a
+sampling limit; adjust it to the dataset. The existing run ID is UTC window start,
+e.g. `2026-09-01T00:00:00Z`. Do not run competing graph-changing DAGs in parallel.
+The [cross-window visit limitation](#known-limitation-port-visits-spanning-processing-window-boundaries)
+still applies. See [orchestration details](airflow/README.md#sequential-daily-analytics).
+
+### 14. Build dbt models and run tests
+
+```sh
+dbt build --project-dir dbt --select +vessels current_port_visits
+```
+
+This builds the selected models and runs their existing tests without country
+data. It does not invoke the canonical-load macro, port detection, or GDS.
+
+**Optional enrichment:** only after separately provisioning and populating
+`raw.countries` through Airbyte, run:
+
+```sh
+dbt build --project-dir dbt --select +countries +port_graph_metrics_enriched
+```
+
+This creates `analytics.countries` and the enriched graph-metrics view for
+Metabase. The country source and dashboard setup are not reproducible from this
+repo alone. Avoid unqualified `dbt build` until that source exists. See
+[Optional Airbyte enrichment](#optional-airbyte-enrichment).
+
+### 15. Shut down without deleting volumes
+
+After active ingestion/analytics have finished:
+
+```sh
+docker compose --profile live --profile batch --profile analytics down
+```
+
+Named volumes and host HAIS files are retained. **Do not add `-v`** when preserving
+data. The sections below are background, validation, and troubleshooting references.
 
 ## Known limitation: port visits spanning processing-window boundaries
 
@@ -14,6 +261,7 @@ physical stay may be represented as multiple daily visit fragments because:
 - the next daily run starts with no knowledge of the previous observation.
 
 This can cause:
+
 - overcounting of physical port visits;
 - fragmented stay durations;
 - small differences in derived port-to-port connections and graph metrics.
@@ -22,6 +270,7 @@ The issue was identified during data-quality testing against raw AIS observation
 It is acceptable for the current portfolio implementation.
 
 A production implementation would use either:
+
 - persistent detector state across processing windows; or
 - continuous-range physical visit detection followed by daily analytical
   projection.
@@ -29,13 +278,13 @@ A production implementation would use either:
 ## Architecture
 
 ```text
-BarentsWatch AIS -> Kafka topic ais.positions -> Kafka Connect 5.5.3 -> Homebrew Neo4j
+BarentsWatch AIS -> Kafka topic ais.positions -> Kafka Connect 5.5.3 -> Docker Neo4j
                           -> ksqlDB
                           -> ClickHouse / dbt
                           -> Metabase
 ```
 
-Neo4j runs directly on macOS through Homebrew. Kafka, Kafka Connect, ksqlDB, and Kafbat UI run in Docker Compose on the shared `ais-network` network. Because Kafka Connect runs inside Docker, its Neo4j URI must be `bolt://host.docker.internal:7687`, never `localhost:7687`.
+Docker Compose is the supported local runtime for Neo4j, ClickHouse, Kafka, Kafka Connect, ksqlDB, and Kafbat UI on the shared `ais-network` network. Docker clients use `bolt://neo4j:7687`; host clients use `bolt://localhost:7687`.
 
 The repository is organized by platform concern:
 
@@ -59,13 +308,22 @@ The repository is organized by platform concern:
 | ksqlDB | `confluentinc/cp-ksqldb-server:8.3.1` | `http://localhost:8088` | Streaming SQL REST API |
 | Kafbat UI | `ghcr.io/kafbat/kafka-ui:latest` | `http://localhost:8081` | Kafka UI |
 | Neo4j Kafka Connector | `5.5.3` | Docker plugin path | Neo4j sink connector |
-| Homebrew Neo4j | `2026.07.1` | `neo4j://localhost:7687` | Graph database |
+| Docker Neo4j | `2026.07.1` | `neo4j://localhost:7687` | Graph database |
 
-Kafka advertises `ais-kafka:29092` to Docker services and `localhost:9092` to macOS. Kafka Connect mounts `./plugins` at `/usr/share/java/plugins`; the Neo4j connector JAR is manually stored there.
+Kafka advertises `ais-kafka:29092` to Docker services and `localhost:9092` to macOS. Kafka Connect mounts `./plugins` at `/usr/share/java/plugins`; the Neo4j connector 5.5.3 JAR is included in the repository.
+
+Kafka stores broker data in the `kafka-data` named volume at `/var/lib/kafka/data`.
+**Adding this volume does not migrate data from the existing broker container.**
+Before recreating that container, back up or explicitly migrate its current Kafka
+storage if those records must be retained. Existing Neo4j and ClickHouse named
+volume mappings are unchanged. Airflow's `batch` service waits for healthy
+ClickHouse and Neo4j before starting.
 
 ## ClickHouse raw layer
 
-ClickHouse stores the complete historical AIS event stream in `raw.ais_positions`. Neo4j stores graph entities and the latest known vessel state; ClickHouse stores every AIS observation for historical and time-series analysis. The existing `ais` database remains unchanged, and staging and marts databases are not created yet.
+ClickHouse stores the complete historical AIS event stream in `raw.ais_positions`. Neo4j stores graph entities and the latest known vessel state; ClickHouse stores every AIS observation for historical and time-series analysis. dbt models use the `analytics` database; see [dbt setup](dbt/README.md).
+`raw.hais_positions` preserves the HAIS source; the dbt staging view and load macro
+populate the canonical normalized `raw.ais_positions` table.
 
 The raw table uses monthly event-time partitions:
 
@@ -96,7 +354,8 @@ The Kafka Engine table is a consumer interface, not persistent analytical storag
 
 `raw.ais_positions` uses `ReplacingMergeTree(ingested_at)` so overlapping historical and live ingestion can converge to one logical event per `(mmsi, msgtime)`. Physical duplicate parts may exist temporarily before background merges; use `FINAL` when validating the logical view. The manual migration is [clickhouse/migrations/001_replacing_ais_positions.sql](clickhouse/migrations/001_replacing_ais_positions.sql). Pause AIS producers and ClickHouse Kafka ingestion before running it. It keeps the pre-migration table as `raw.ais_positions_merge_backup` and does not run automatically from Docker startup.
 
-Run the migration manually from the repository root after pausing producers and ClickHouse ingestion:
+**Existing installations only:** migration 001 is not part of the fresh-clone quickstart.
+Run it only when upgrading an older raw table, after pausing producers and ClickHouse ingestion:
 
 ```sh
 docker exec -i ais-clickhouse sh -c \
@@ -149,114 +408,6 @@ HAVING event_count > 1
 ORDER BY event_count DESC;
 ```
 
-## Configuration
-
-Copy `.env.example` to `.env` and provide credentials only in your local environment:
-
-```sh
-cp .env.example .env
-```
-
-Never commit `.env`, passwords, tokens, or local connector configurations containing credentials. Use [neo4j/connectors/ais-sink.example.json](neo4j/connectors/ais-sink.example.json) as the safe template and copy it to `ais-sink.json` locally.
-
-## Local Development Startup
-
-The exact startup order after a reboot is:
-
-1. Start Homebrew Neo4j:
-
-  ```sh
-  brew services start neo4j
-  neo4j status
-  ```
-
-2. Start Docker infrastructure:
-
-  ```sh
-  docker compose up -d
-  ```
-
-  Or run `./scripts/start-local.sh` to start Neo4j, wait for the Compose healthchecks, create the topic, and print URLs.
-
-3. Verify services:
-
-  ```sh
-  docker compose ps
-  ```
-
-  Expected: `ais-kafka` healthy, `kafka-connect` healthy, `ksqldb-server` healthy, and `kafbat-ui` Up.
-
-4. Create `ais.positions`:
-
-  ```sh
-  ./scripts/create-kafka-topic.sh
-  ```
-
-  This idempotently creates three partitions with replication factor `1` using `--if-not-exists`.
-
-5. Verify the topic:
-
-  ```sh
-  docker exec ais-kafka \
-    /opt/kafka/bin/kafka-topics.sh \
-    --bootstrap-server localhost:29092 \
-    --list
-  ```
-
-  The output should include `ais.positions`.
-
-6. Verify the Kafka Connect plugin:
-
-  ```sh
-  curl -s http://localhost:8083/connector-plugins | jq '.'
-  ```
-
-  Expected classes include `org.neo4j.connectors.kafka.sink.Neo4jConnector` and `org.neo4j.connectors.kafka.source.Neo4jConnector`, version `5.5.3`.
-
-7. Verify Neo4j is reachable from Kafka Connect:
-
-  ```sh
-  docker exec kafka-connect bash -c \
-    'echo > /dev/tcp/host.docker.internal/7687 && echo "Neo4j reachable"'
-  ```
-
-8. Create the Neo4j constraint:
-
-  ```cypher
-  CREATE CONSTRAINT vessel_mmsi_unique IF NOT EXISTS
-  FOR (v:Vessel)
-  REQUIRE v.mmsi IS UNIQUE;
-  ```
-
-  Run it in Neo4j Browser or with `cypher-shell`.
-
-9. Register the Neo4j sink connector using a local config file:
-
-  ```sh
-  cp neo4j/connectors/ais-sink.example.json neo4j/connectors/ais-sink.json
-  # Edit the local file and replace its password placeholder.
-  curl -X POST http://localhost:8083/connectors \
-    -H 'Content-Type: application/json' \
-    -d @neo4j/connectors/ais-sink.json
-  ```
-
-10. Check connector status:
-
-   ```sh
-   curl -s \
-    http://localhost:8083/connectors/ais-neo4j-sink/status \
-    | jq '.'
-   ```
-
-   Expected: connector state `RUNNING` and task state `RUNNING`.
-
-11. Open the local interfaces:
-
-   - Kafbat: [http://localhost:8081](http://localhost:8081)
-   - Neo4j Browser: [http://localhost:7474/browser/](http://localhost:7474/browser/)
-   - Kafka Connect REST: [http://localhost:8083](http://localhost:8083)
-   - ksqlDB: [http://localhost:8088](http://localhost:8088)
-
 ## Neo4j model
 
 The initial sink writes one `Vessel` node per MMSI:
@@ -277,103 +428,12 @@ SET v.name = event.name,
 
 It updates `name`, `shipType`, `latitude`, `longitude`, `speedOverGround`, `courseOverGround`, `trueHeading`, `navigationalStatus`, `stream`, and `lastSeen`. It does not create a `Position` node for every AIS event.
 
-## Live AIS producer test
+## Producer behavior and validation
 
-The producer runs continuously by default on macOS/Linux. Set `AIS_MESSAGE_LIMIT` to a positive integer for a bounded run; unset or empty means continuous. Existing `.env` files may still contain `AIS_MESSAGE_LIMIT=20`: remove it or use the explicit overrides below.
-
-1. Make sure the local infrastructure is running:
-
-  ```sh
-  ./scripts/start-local.sh
-  ```
-
-2. Make sure the Neo4j uniqueness constraint exists:
-
-  ```cypher
-  CREATE CONSTRAINT vessel_mmsi_unique IF NOT EXISTS
-  FOR (v:Vessel)
-  REQUIRE v.mmsi IS UNIQUE;
-  ```
-
-3. Put the BarentsWatch credentials in the local `.env` file. The file is ignored by Git and must never be committed:
-
-  ```dotenv
-  BW_AIS_CLIENT_ID=...
-  BW_AIS_CLIENT_SECRET=...
-  ```
-
-4. Install the producer dependencies:
-
-  ```sh
-  python3 -m pip install -r producers/ais/requirements.txt
-  ```
-
-5. Run the 20-message producer from the repository root:
-
-  ```sh
-  AIS_MESSAGE_LIMIT=20 python3 producers/ais/producer.py
-  ```
-
-  It requests an OAuth client-credentials token with scope `ais`, reads the response as streaming NDJSON, preserves the original AIS JSON fields, and uses the event MMSI as the Kafka key.
-
-6. Verify Kafka messages with a Kafka 4.3-compatible consumer:
-
-  ```sh
-  docker exec -it ais-kafka /opt/kafka/bin/kafka-console-consumer.sh \
-    --bootstrap-server localhost:29092 \
-    --topic ais.positions \
-    --from-beginning \
-    --formatter-property print.key=true \
-    --formatter-property key.separator=:
-  ```
-
-7. Verify the vessels written by the Neo4j sink:
-
-  ```cypher
-  MATCH (v:Vessel)
-  RETURN
-     v.mmsi,
-     v.name,
-     v.latitude,
-     v.longitude,
-     v.speedOverGround,
-     v.lastSeen
-  ORDER BY v.lastSeen DESC;
-  ```
-
-  ```cypher
-  MATCH (v:Vessel)
-  RETURN count(v) AS vesselCount;
-  ```
-
-Twenty Kafka messages do not necessarily produce twenty `Vessel` nodes because the Neo4j sink merges by MMSI.
-
-## Continuous producer in Docker
-
-With the existing infrastructure and topic running:
-
-```sh
-AIS_MESSAGE_LIMIT= docker compose --profile live up -d --build --no-deps ais-producer
-docker compose logs --tail 30 -f ais-producer
-```
-
-The `live` profile keeps ordinary infrastructure startup from unexpectedly starting ingestion.
-The service reuses root `.env` at runtime and overrides Kafka to `ais-kafka:29092`.
-Its build context includes only the producer and requirements; credentials are never copied into the image.
-Do not share expanded `docker compose config` output, which can contain secrets.
-Airflow does not orchestrate this live service.
-
-For continuous local mode use `AIS_MESSAGE_LIMIT= python3 producers/ais/producer.py`.
-Ctrl-C stops the local producer. Stop Docker ingestion with:
-
-```sh
-docker compose stop ais-producer
-```
-
-Ctrl-C while following Docker logs only stops the log viewer.
-SIGINT/SIGTERM close HTTP work and flush Kafka with a 35-second deadline; Compose allows 45 seconds.
-The producer runs as a non-root user and restarts on failure, while a successful bounded run stays stopped.
-No data-arrival healthcheck is used: quiet upstream periods are not evidence of failure.
+The Docker producer preserves the original AIS JSON fields and uses MMSI as the
+Kafka key.
+SIGINT/SIGTERM flush Kafka with a 35-second deadline; Compose allows 45 seconds.
+No data-arrival healthcheck is used: quiet upstream periods are not a failure.
 
 OAuth uses `client_credentials` with scope `ais`. A fresh token is requested before `expires_in`
 elapses, including during an idle stream. A 401 triggers renewal; rejection of a fresh token
@@ -388,7 +448,7 @@ stop the producer instead of silently skipping an event. The live API has no rep
 so outages/reconnects can leave gaps or repeat upstream events.
 
 For a bounded validation, stop other producers first, record Kafka partition end offsets,
-then run with `AIS_MESSAGE_LIMIT=20`. The sum of end offsets should increase by exactly 20:
+then use the [one-off test](#10-optionally-run-a-bounded-producer-test). The sum of end offsets should increase by exactly 20:
 
 ```sh
 docker exec ais-kafka /opt/kafka/bin/kafka-get-offsets.sh \
@@ -407,50 +467,46 @@ python3 -m unittest discover -s producers/ais/tests -v
 
 ## Port visits and graph summaries
 
-The Bergen pilot batch adds seven reference ports, infers visits from ClickHouse
-AIS history, and stores `(Vessel)-[:VISITED {visitCount}]->(Port)` summaries in Neo4j.
-Individual visits remain in ClickHouse; existing live Vessel properties are preserved.
+The port-visit batch infers visits from canonical ClickHouse AIS history and stores
+`(Vessel)-[:VISITED]->(Port)` summaries in Neo4j. Individual visits remain in
+ClickHouse; existing live Vessel properties are preserved. The Airflow DAG downloads
+and validates its configured WPI reference before processing. It publishes managed
+`CONNECTED_TO` relationships; GDS writes PageRank/Louvain metrics, and the separate
+export DAG retains snapshots in `analytics.port_graph_metrics`.
 
-```sh
-.venv/bin/python -m pip install -r pipelines/port_visits/requirements.txt
-.venv/bin/python pipelines/port_visits/run.py                 # read-only preview
-.venv/bin/python pipelines/port_visits/run.py --apply --init  # first publication
-```
+See [port detection](pipelines/port_visits/README.md),
+[connections](airflow/README.md#three-tasks),
+[GDS/export](pipelines/graph_metrics/README.md), and
+[manual GDS](neo4j/gds/README.md) for algorithms, retry behavior, and validation.
 
-See [the port-visit workflow](pipelines/port_visits/README.md) for thresholds,
-reproducible windows, validation, retry behavior, and data limitations.
-This milestone prepares the graph for GDS; similarity is not yet added.
-A dedicated two-task Airflow DAG now downloads ports and runs this batch. See
-[Airflow setup and usage](airflow/README.md).
+## Optional Airbyte enrichment
 
-## Country reference dimension
+Airbyte is **not deployed by `docker-compose.yml`** and is **not required for the
+core AIS analytics pipeline**. It is used separately to ingest country reference
+data from the REST Countries API into ClickHouse table `raw.countries` (database/
+schema `raw`), declared as `source('raw', 'countries')` in dbt. The staging model
+expects JSON strings in `codes`, `names`, and `capitals`, plus a `region` field.
+Airbyte deployment, source credentials, and the source-to-ClickHouse connection
+must be configured separately.
 
-`analytics.countries` provides country names, ISO codes, region, and capital city
-for enriching ports: join `analytics.ports.country` to `countries.country_code`
-using the ISO alpha-2 code. It uses `ReplacingMergeTree(updated_at)` keyed by
-`country_code`; read with `FINAL` for the latest logical row per country. The manual
-[countries migration](clickhouse/migrations/002_countries.sql) creates the table and
-adds a temporary Norway seed only if `NO` is absent. It does not run automatically
-at Docker startup. Apply it from the repository root:
+The dependent dbt models are:
 
-```sh
-docker exec -i ais-clickhouse sh -c \
-  'clickhouse-client --user "$CLICKHOUSE_USER" --password "$CLICKHOUSE_PASSWORD" --multiquery' \
-  < clickhouse/migrations/002_countries.sql
-```
+- `stg_countries`: extracts and normalizes country codes, names, region, and capital.
+- `countries`: builds `analytics.countries` from `stg_countries`.
+- `port_graph_metrics_enriched`: joins `countries` to port/graph metrics using
+  `analytics.ports.country` and the country ISO alpha-2 code. Its LEFT JOIN still
+  requires the country relation to exist.
 
-The planned flow is public country API → Airbyte raw ingestion → dbt transformation
-→ `analytics.countries`. This migration supplies the reference table and seed;
-Airbyte ingestion and dbt transformations for countries are not implemented yet.
+**Without Airbyte:** skip the optional country-enrichment command in quickstart
+step 14 and use only its `dbt build --project-dir dbt --select +vessels current_port_visits`
+command. Do not run unqualified `dbt build`, which includes the country-dependent
+models. HAIS ingestion, canonical AIS loading, port visits, GDS, and export to
+`analytics.port_graph_metrics` remain available without country data.
 
-## Shutdown
-
-```sh
-docker compose down
-brew services stop neo4j
-```
-
-Or run `./scripts/stop-local.sh`. `docker compose down` does not stop Homebrew Neo4j because Neo4j runs directly on macOS.
+Once `raw.countries` is populated, follow step 14's optional command or the
+[dbt enrichment reference](dbt/README.md#optional-country-enrichment). Country and
+enriched-view SQL migrations were superseded by these dbt models; do not apply
+the removed migrations.
 
 ## Troubleshooting
 
@@ -472,7 +528,7 @@ Or run `./scripts/stop-local.sh`. `docker compose down` does not stop Homebrew N
 
 5. **Kafka Connect cannot reach Neo4j**
 
-  Do not use `localhost` from inside Docker. Use `bolt://host.docker.internal:7687` in the connector configuration.
+  Do not use `localhost` from inside Docker. Use `bolt://neo4j:7687` in the connector configuration.
 
 6. **Neo4j plugin is missing from `/connector-plugins`**
 

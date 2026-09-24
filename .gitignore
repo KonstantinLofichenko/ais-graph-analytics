@@ -23,6 +23,7 @@ ENV/
 htmlcov/
 
 # dbt
+dbt/profiles.yml
 target/
 dbt_packages/
 logs/
