@@ -1,0 +1,211 @@
+{
+  "cache_ttl": null,
+  "dataset_query": {
+    "database": 2,
+    "lib/type": "mbql/query",
+    "stages": [
+      {
+        "aggregation": [
+          [
+            "max",
+            {
+              "lib/uuid": "b2631d82-2994-4b3a-84ed-321b6409bd54"
+            },
+            [
+              "field",
+              {
+                "base-type": "type/Float",
+                "effective-type": "type/Float",
+                "lib/uuid": "280dbc9a-8482-4efe-8ef9-f5a2ded54125"
+              },
+              111
+            ]
+          ],
+          [
+            "sum",
+            {
+              "lib/uuid": "821561e9-5b17-42ec-bfd6-a4a2e27399b6"
+            },
+            [
+              "field",
+              {
+                "base-type": "type/BigInteger",
+                "effective-type": "type/BigInteger",
+                "lib/uuid": "e833f8de-4d83-4ee0-878d-a70dd13f996b"
+              },
+              144
+            ]
+          ],
+          [
+            "sum",
+            {
+              "lib/uuid": "f06cc92e-0f3b-4060-85d3-3067b1df4298"
+            },
+            [
+              "field",
+              {
+                "base-type": "type/BigInteger",
+                "effective-type": "type/BigInteger",
+                "lib/uuid": "4ffc4098-b0f3-406a-8a91-e248b9be4965"
+              },
+              145
+            ]
+          ]
+        ],
+        "breakout": [
+          [
+            "field",
+            {
+              "base-type": "type/Text",
+              "effective-type": "type/Text",
+              "lib/uuid": "bbd1ed15-f028-4b8c-9485-fb4cff434643"
+            },
+            104
+          ],
+          [
+            "field",
+            {
+              "base-type": "type/DateTimeWithLocalTZ",
+              "effective-type": "type/DateTimeWithLocalTZ",
+              "lib/uuid": "2ac3e9fa-e2d6-42ba-8de4-ded32158d4c2",
+              "temporal-unit": "minute"
+            },
+            100
+          ],
+          [
+            "field",
+            {
+              "base-type": "type/DateTimeWithLocalTZ",
+              "effective-type": "type/DateTimeWithLocalTZ",
+              "lib/uuid": "71007a6f-c831-4643-a596-6f86e9280240",
+              "temporal-unit": "minute"
+            },
+            101
+          ],
+          [
+            "field",
+            {
+              "base-type": "type/BigInteger",
+              "effective-type": "type/BigInteger",
+              "lib/uuid": "f666892c-7f58-4aae-89c9-365aa68171d0"
+            },
+            112
+          ]
+        ],
+        "lib/type": "mbql.stage/mbql",
+        "limit": 10,
+        "order-by": [
+          [
+            "asc",
+            {
+              "lib/uuid": "17331175-3ca0-4efb-85f6-77c554064352"
+            },
+            [
+              "aggregation",
+              {
+                "base-type": "type/Float",
+                "effective-type": "type/Float",
+                "lib/source-name": "max",
+                "lib/uuid": "9cc2708c-9231-4026-b49c-a57132ad9ad1"
+              },
+              "b2631d82-2994-4b3a-84ed-321b6409bd54"
+            ]
+          ],
+          [
+            "asc",
+            {
+              "lib/uuid": "c6866316-a7ab-4894-9ff2-1b0415f4e386"
+            },
+            [
+              "field",
+              {
+                "base-type": "type/Text",
+                "effective-type": "type/Text",
+                "lib/uuid": "8befa4b9-10a9-44b7-8b8b-c0251d4be67f"
+              },
+              104
+            ]
+          ]
+        ],
+        "source-table": 12
+      }
+    ]
+  },
+  "description": null,
+  "display": "table",
+  "id": 41,
+  "name": "Bottom 10 Ports by Centrality Score",
+  "parameter_mappings": [],
+  "parameters": [],
+  "type": "question",
+  "visualization_settings": {
+    "column_settings": {
+      "[\"name\",\"max\"]": {
+        "column_title": "Port Centrality Score"
+      },
+      "[\"name\",\"sum\"]": {
+        "column_title": "Unique Vessels"
+      },
+      "[\"name\",\"sum_2\"]": {
+        "column_title": "Visit Count"
+      },
+      "[\"name\",\"window_end\"]": {
+        "column_title": "Window End",
+        "date_abbreviate": true
+      },
+      "[\"name\",\"window_start\"]": {
+        "column_title": "Window Start",
+        "date_abbreviate": true
+      }
+    },
+    "table.cell_column": "max",
+    "table.column_formatting": [
+      {
+        "colors": [
+          "hsla(89, 48%, 40%, 1)",
+          "hsla(46, 81%,  52%, 1)",
+          "hsla(358, 71%, 62%, 1)"
+        ],
+        "columns": [
+          "max"
+        ],
+        "max_type": null,
+        "max_value": 100,
+        "min_type": null,
+        "min_value": 0,
+        "type": "range"
+      }
+    ],
+    "table.columns": [
+      {
+        "enabled": true,
+        "name": "port_name"
+      },
+      {
+        "enabled": true,
+        "name": "window_start"
+      },
+      {
+        "enabled": true,
+        "name": "window_end"
+      },
+      {
+        "enabled": true,
+        "name": "sum"
+      },
+      {
+        "enabled": true,
+        "name": "sum_2"
+      },
+      {
+        "enabled": true,
+        "name": "community_id"
+      },
+      {
+        "enabled": true,
+        "name": "max"
+      }
+    ],
+    "table.pivot_column": "port_name"
+  }
+}

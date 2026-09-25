@@ -4,6 +4,57 @@ AIS Graph Analytics collects vessel positions through Kafka or HAIS historical
 files, stores canonical AIS observations in ClickHouse, and builds port-visit and
 Neo4j/GDS graph snapshots for analysis with dbt and optional Metabase.
 
+It demonstrates an end-to-end data engineering workflow: live and historical
+ingestion, canonical time-series storage, repeatable Airflow orchestration,
+graph analytics, BI delivery, and automated CI checks.
+
+## Project at a glance
+
+```text
+Live AIS -> Kafka -> Kafka Connect -> Neo4j latest vessel state
+                 \-> ClickHouse canonical position history
+
+HAIS GeoParquet -> Airflow -> ClickHouse raw layer -> dbt normalization
+                                                   \-> canonical position history
+
+Canonical positions -> port visits -> Neo4j port network -> GDS
+    -> ClickHouse metric snapshots -> dbt enrichment -> Metabase
+```
+
+The analytical workflow infers qualified port stays, publishes consecutive
+observed port movements, calculates weighted PageRank and Louvain communities in
+Neo4j GDS, and exports versioned results back to ClickHouse for Metabase.
+
+### Verified portfolio snapshot
+
+The local acceptance run completed on September 24, 2026. For the September 23
+UTC processing window it processed **2,941,803 positions**, detected **2,696 port
+visits**, and produced **51 country-enriched port metric rows**. The broader
+persistence check preserved **48,688,051 canonical historical rows**, Neo4j graph
+counts and constraints, ClickHouse analytical checksums, and all **136 Airflow run
+records** across a full Compose stop/start cycle.
+
+The first GitHub Actions run passed all four jobs: Shell/Compose validation,
+pipeline and Airflow unit tests, producer unit tests, and dbt parsing. The local
+test run passed **183 unit tests**.
+
+These values document a tested portfolio run; they are not throughput benchmarks
+or production service-level claims.
+
+### Presentation
+
+- [English presentation (PDF)](AIS-Graph-Analytics-ENG.pdf)
+- [Russian presentation (PDF)](AIS-Graph-Analytics-RUS.pdf)
+
+### Quick links
+
+- [Fresh-clone quickstart](#fresh-clone-quickstart)
+- [Architecture and repository layout](#architecture)
+- [Port visits and graph summaries](#port-visits-and-graph-summaries)
+- [Known analytical limitation](#known-limitation-port-visits-spanning-processing-window-boundaries)
+- [Continuous integration](#continuous-integration)
+- [Current validation status](#status)
+
 ## Continuous integration
 
 [The CI workflow](.github/workflows/ci.yml) runs on pushes, pull requests, and
@@ -120,6 +171,7 @@ docker compose --profile analytics up -d metabase
 Open [Metabase](http://localhost:3000), complete its local setup, and add ClickHouse
 using Docker hostname `clickhouse`, port `8123`, and your local credentials.
 Database connections and dashboards are not provisioned by this repository.
+See [Metabase dashboard transfer](metabase/README.md) for JSON export/import scripts.
 Country-enriched models are optional and require the external source in step 14.
 
 ### 9. Optionally start the continuous producer
@@ -293,13 +345,25 @@ A production implementation would use either:
 ## Architecture
 
 ```text
-BarentsWatch AIS -> Kafka topic ais.positions -> Kafka Connect 5.5.3 -> Docker Neo4j
-                          -> ksqlDB
-                          -> ClickHouse / dbt
-                          -> Metabase
+BarentsWatch AIS
+  -> Kafka topic ais.positions
+      -> Kafka Connect 5.5.3 -> Neo4j Vessel latest state
+      -> ClickHouse Kafka engine/materialized view -> raw.ais_positions
+
+HAIS GeoParquet
+  -> Airflow audited ingestion -> raw.hais_positions
+  -> dbt normalization/load -> raw.ais_positions
+
+raw.ais_positions
+  -> Airflow port-visit detection -> ClickHouse visits + Neo4j VISITED
+  -> CONNECTED_TO publication -> Neo4j GDS PageRank/Louvain
+  -> ClickHouse graph snapshots -> dbt enrichment -> Metabase
 ```
 
-Docker Compose is the supported local runtime for Neo4j, ClickHouse, Kafka, Kafka Connect, ksqlDB, and Kafbat UI on the shared `ais-network` network. Docker clients use `bolt://neo4j:7687`; host clients use `bolt://localhost:7687`.
+Docker Compose is the supported local runtime for Neo4j, ClickHouse, Kafka, Kafka
+Connect, ksqlDB, Kafbat UI, Airflow, the optional producer, and Metabase on the
+shared `ais-network` network. Docker clients use `bolt://neo4j:7687`; host clients
+use `bolt://localhost:7687`.
 
 The repository is organized by platform concern:
 
@@ -429,19 +493,25 @@ The initial sink writes one `Vessel` node per MMSI:
 
 ```cypher
 MERGE (v:Vessel {mmsi: event.mmsi})
+ON CREATE SET v.createdAt = datetime()
 SET v.name = event.name,
    v.shipType = event.shipType,
-   v.latitude = event.latitude,
-   v.longitude = event.longitude,
-   v.speedOverGround = event.speedOverGround,
-   v.courseOverGround = event.courseOverGround,
-   v.trueHeading = event.trueHeading,
-   v.navigationalStatus = event.navigationalStatus,
-   v.stream = event.stream,
-   v.lastSeen = datetime(event.msgtime)
+   v.lastLatitude = event.latitude,
+   v.lastLongitude = event.longitude,
+   v.lastSpeedOverGround = event.speedOverGround,
+   v.lastCourseOverGround = event.courseOverGround,
+   v.lastRateOfTurn = event.rateOfTurn,
+   v.lastTrueHeading = event.trueHeading,
+   v.lastNavigationalStatus = event.navigationalStatus,
+   v.lastStream = event.stream,
+   v.lastSeen = datetime(event.msgtime),
+   v.updatedAt = datetime()
 ```
 
-It updates `name`, `shipType`, `latitude`, `longitude`, `speedOverGround`, `courseOverGround`, `trueHeading`, `navigationalStatus`, `stream`, and `lastSeen`. It does not create a `Position` node for every AIS event.
+It updates the vessel's latest position and navigation properties. `createdAt` is
+set only for a new vessel; `updatedAt` changes for every processed event. It does
+not create a `Position` node for every AIS event. The full event history remains
+in ClickHouse.
 
 ## Producer behavior and validation
 
@@ -504,6 +574,14 @@ expects JSON strings in `codes`, `names`, and `capitals`, plus a `region` field.
 Airbyte deployment, source credentials, and the source-to-ClickHouse connection
 must be configured separately.
 
+The sanitized source, destination, and connection export is documented in
+[`airbyte/`](airbyte/README.md). It preserves the selected stream,
+schedule, sync mode, namespace, ClickHouse target, and schema-change behavior,
+while replacing secrets and deployment-specific IDs with placeholders. The
+custom Connector Builder manifest is included in
+[`airbyte/exports/countries-to-clickhouse/`](airbyte/exports/countries-to-clickhouse/);
+import it before using the source configuration.
+
 The dependent dbt models are:
 
 - `stg_countries`: extracts and normalizes country codes, names, region, and capital.
@@ -557,4 +635,19 @@ the removed migrations.
 
 ## Status
 
-Run `./scripts/status.sh` to show Neo4j status, Compose service status, Kafka topics, and registered Kafka Connect connectors.
+Completed and verified:
+
+- live Kafka ingestion into ClickHouse and the latest Vessel state in Neo4j;
+- HAIS ingestion and canonical dbt load;
+- daily port visits, port connections, GDS metrics, export, and Metabase dashboard;
+- connector recovery and full Compose stop/start persistence;
+- local unit/dbt validation and the first successful GitHub Actions run;
+- English and Russian portfolio presentations.
+
+Deferred for later validation:
+
+- backup and restore recovery;
+- isolated fresh-clone installation with empty volumes.
+
+Run `./scripts/status.sh` to show Neo4j status, Compose service status, Kafka
+topics, and registered Kafka Connect connectors.

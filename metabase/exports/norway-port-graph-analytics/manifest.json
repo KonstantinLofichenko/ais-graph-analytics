@@ -1,0 +1,30 @@
+{
+  "all_card_ids": [
+    40,
+    41,
+    42,
+    43
+  ],
+  "card_dependencies": {
+    "40": [],
+    "41": [],
+    "42": [],
+    "43": []
+  },
+  "card_files": {
+    "40": "40-top-10-ports-by-centrality-score.json",
+    "41": "41-bottom-10-ports-by-centrality-score.json",
+    "42": "42-port-map.json",
+    "43": "43-ports-by-louvain-community.json"
+  },
+  "dashboard_id": 2,
+  "dashboard_name": "Norway Port Graph Analytics ",
+  "format": "metabase-dashboard-json-export",
+  "format_version": 1,
+  "visible_card_ids": [
+    40,
+    41,
+    42,
+    43
+  ]
+}

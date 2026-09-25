@@ -1,0 +1,117 @@
+{
+  "cache_ttl": null,
+  "dataset_query": {
+    "database": 2,
+    "lib/type": "mbql/query",
+    "stages": [
+      {
+        "aggregation": [
+          [
+            "distinct",
+            {
+              "display-name": "Ports",
+              "lib/uuid": "04be0d2a-c0c5-4c27-9dcd-87613a9290a2",
+              "name": "Ports"
+            },
+            [
+              "field",
+              {
+                "base-type": "type/Text",
+                "effective-type": "type/Text",
+                "lib/uuid": "e9fe4839-c782-4713-ad8a-20908713ebb0"
+              },
+              103
+            ]
+          ],
+          [
+            "sum",
+            {
+              "lib/uuid": "1f314fd9-93d2-4ac5-9872-0092df2ab5eb"
+            },
+            [
+              "field",
+              {
+                "base-type": "type/BigInteger",
+                "effective-type": "type/BigInteger",
+                "lib/uuid": "d2dadf44-a930-4717-bc76-807962f0d0cc"
+              },
+              144
+            ]
+          ],
+          [
+            "sum",
+            {
+              "lib/uuid": "08f1b7ec-d02c-46bf-a337-438796fee516"
+            },
+            [
+              "field",
+              {
+                "base-type": "type/BigInteger",
+                "effective-type": "type/BigInteger",
+                "lib/uuid": "7f68bd5b-c42f-426b-b387-f4c03d93b5cf"
+              },
+              145
+            ]
+          ]
+        ],
+        "breakout": [
+          [
+            "field",
+            {
+              "base-type": "type/BigInteger",
+              "effective-type": "type/BigInteger",
+              "lib/uuid": "ce0c433c-8814-4ee9-bae2-cb78cd8fff74"
+            },
+            112
+          ]
+        ],
+        "lib/type": "mbql.stage/mbql",
+        "order-by": [
+          [
+            "desc",
+            {
+              "lib/uuid": "d4cefcba-ac03-45a7-ab9e-9895a16f990d"
+            },
+            [
+              "aggregation",
+              {
+                "base-type": "type/Integer",
+                "effective-type": "type/Integer",
+                "lib/source-name": "Ports",
+                "lib/uuid": "9886642a-a406-4fd1-a1d1-e4f90672b0b8"
+              },
+              "04be0d2a-c0c5-4c27-9dcd-87613a9290a2"
+            ]
+          ]
+        ],
+        "source-table": 12
+      }
+    ]
+  },
+  "description": null,
+  "display": "row",
+  "id": 43,
+  "name": "Ports by Louvain Community",
+  "parameter_mappings": [],
+  "parameters": [],
+  "type": "question",
+  "visualization_settings": {
+    "graph.dimensions": [
+      "community_id"
+    ],
+    "graph.metrics": [
+      "Ports",
+      "sum",
+      "sum_2"
+    ],
+    "series_settings": {
+      "sum": {
+        "title": "Unique Vessels"
+      },
+      "sum_2": {
+        "title": "Visit Count"
+      }
+    },
+    "stackable.stack_type": null
+  }
+}

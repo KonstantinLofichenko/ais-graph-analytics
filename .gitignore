@@ -54,6 +54,11 @@ data/hais/
 neo4j/connectors/*.json
 !neo4j/connectors/*.example.json
 
+# Local Airbyte request files may contain credentials and deployment IDs
+airbyte/*.local.json
+
 # Local batch lock and validation reports
 pipelines/port_visits/.run.lock
 .venv-dbt/
+.venv-metabase/
+/metabase_export/

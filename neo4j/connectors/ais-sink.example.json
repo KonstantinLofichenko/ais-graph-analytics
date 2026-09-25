@@ -11,6 +11,6 @@
     "neo4j.authentication.type": "BASIC",
     "neo4j.authentication.basic.username": "neo4j",
     "neo4j.authentication.basic.password": "REPLACE_WITH_LOCAL_NEO4J_PASSWORD",
-    "neo4j.cypher.topic.ais.positions": "WITH __value AS event MERGE (v:Vessel {mmsi: event.mmsi}) ON CREATE SET v.createdAt = datetime() SET v.name = event.name, v.shipType = event.shipType, v.lastLatitude = event.latitude, v.lastLongitude = event.longitude, v.lastSpeedOverGround = event.speedOverGround, v.lastCourseOverGround = event.courseOverGround, v.lastTrueHeading = event.trueHeading, v.lastNavigationalStatus = event.navigationalStatus, v.lastStream = event.stream, v.lastSeen = datetime(event.msgtime), v.updatedAt = datetime()"
+    "neo4j.cypher.topic.ais.positions": "WITH __value AS event MERGE (v:Vessel {mmsi: event.mmsi}) ON CREATE SET v.createdAt = datetime() SET v.name = event.name, v.shipType = event.shipType, v.lastLatitude = event.latitude, v.lastLongitude = event.longitude, v.lastSpeedOverGround = event.speedOverGround, v.lastCourseOverGround = event.courseOverGround, v.lastRateOfTurn = event.rateOfTurn, v.lastTrueHeading = event.trueHeading, v.lastNavigationalStatus = event.navigationalStatus, v.lastStream = event.stream, v.lastSeen = datetime(event.msgtime), v.updatedAt = datetime()"
   }
 }

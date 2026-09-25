@@ -1,0 +1,26 @@
+{
+  "name": "Countries API → ClickHouse",
+  "sourceId": "REPLACE_WITH_CREATED_SOURCE_ID",
+  "destinationId": "REPLACE_WITH_CREATED_DESTINATION_ID",
+  "status": "active",
+  "schedule": {
+    "scheduleType": "basic",
+    "basicTiming": "Every 24 HOURS"
+  },
+  "configurations": {
+    "streams": [
+      {
+        "name": "countries",
+        "syncMode": "full_refresh_overwrite",
+        "cursorField": [],
+        "primaryKey": [],
+        "includeFiles": false,
+        "selectedFields": [],
+        "mappers": []
+      }
+    ]
+  },
+  "nonBreakingSchemaUpdatesBehavior": "propagate_columns",
+  "namespaceDefinition": "destination",
+  "prefix": ""
+}

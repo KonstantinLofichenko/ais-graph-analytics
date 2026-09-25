@@ -1,0 +1,9 @@
+{
+  "name": "Countries API",
+  "workspaceId": "REPLACE_WITH_AIRBYTE_WORKSPACE_ID",
+  "definitionId": "REPLACE_WITH_COUNTRIES_SOURCE_DEFINITION_ID",
+  "configuration": {
+    "api_key": "REPLACE_WITH_REST_COUNTRIES_API_KEY",
+    "page_size": 100
+  }
+}

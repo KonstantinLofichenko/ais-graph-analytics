@@ -1,0 +1,376 @@
+{
+  "auto_apply_filters": true,
+  "cache_ttl": null,
+  "dashcards": [
+    {
+      "action_id": null,
+      "card_id": 40,
+      "col": 0,
+      "dashboard_tab_id": null,
+      "inline_parameters": [],
+      "parameter_mappings": [
+        {
+          "card_id": 40,
+          "parameter_id": "f247577e",
+          "target": [
+            "dimension",
+            [
+              "field",
+              106,
+              {
+                "base-type": "type/Text"
+              }
+            ],
+            {
+              "stage-number": 0
+            }
+          ]
+        },
+        {
+          "card_id": 40,
+          "parameter_id": "e5e37f1",
+          "target": [
+            "dimension",
+            [
+              "field",
+              112,
+              {
+                "base-type": "type/BigInteger"
+              }
+            ],
+            {
+              "stage-number": 0
+            }
+          ]
+        },
+        {
+          "card_id": 40,
+          "parameter_id": "32760e99",
+          "target": [
+            "dimension",
+            [
+              "field",
+              99,
+              {
+                "base-type": "type/Text"
+              }
+            ],
+            {
+              "stage-number": 0
+            }
+          ]
+        }
+      ],
+      "row": 0,
+      "series": [],
+      "size_x": 12,
+      "size_y": 5,
+      "visualization_settings": {
+        "column_settings": {
+          "[\"name\",\"max\"]": {
+            "column_title": "Page Rank"
+          },
+          "[\"name\",\"window_end\"]": {
+            "column_title": "Window End",
+            "date_abbreviate": true
+          },
+          "[\"name\",\"window_start\"]": {
+            "column_title": "Window Start",
+            "date_abbreviate": true
+          }
+        },
+        "table.cell_column": "max",
+        "table.column_formatting": [
+          {
+            "colors": [
+              "hsla(358, 71%, 62%, 1)",
+              "hsla(46, 81%,  52%, 1)",
+              "hsla(89, 48%, 40%, 1)"
+            ],
+            "columns": [
+              "max"
+            ],
+            "max_type": null,
+            "max_value": 100,
+            "min_type": null,
+            "min_value": 0,
+            "type": "range"
+          }
+        ],
+        "table.freeze_columns": false,
+        "table.freeze_rows": false,
+        "table.pivot_column": "port_name",
+        "table.row_index": true
+      }
+    },
+    {
+      "action_id": null,
+      "card_id": 41,
+      "col": 12,
+      "dashboard_tab_id": null,
+      "inline_parameters": [],
+      "parameter_mappings": [
+        {
+          "card_id": 41,
+          "parameter_id": "f247577e",
+          "target": [
+            "dimension",
+            [
+              "field",
+              106,
+              {
+                "base-type": "type/Text"
+              }
+            ],
+            {
+              "stage-number": 0
+            }
+          ]
+        },
+        {
+          "card_id": 41,
+          "parameter_id": "e5e37f1",
+          "target": [
+            "dimension",
+            [
+              "field",
+              112,
+              {
+                "base-type": "type/BigInteger"
+              }
+            ],
+            {
+              "stage-number": 0
+            }
+          ]
+        },
+        {
+          "card_id": 41,
+          "parameter_id": "32760e99",
+          "target": [
+            "dimension",
+            [
+              "field",
+              99,
+              {
+                "base-type": "type/Text"
+              }
+            ],
+            {
+              "stage-number": 0
+            }
+          ]
+        }
+      ],
+      "row": 0,
+      "series": [],
+      "size_x": 12,
+      "size_y": 5,
+      "visualization_settings": {
+        "column_settings": {
+          "[\"name\",\"max\"]": {
+            "column_title": "Page Rank"
+          },
+          "[\"name\",\"window_end\"]": {
+            "column_title": "Window End",
+            "date_abbreviate": true
+          },
+          "[\"name\",\"window_start\"]": {
+            "column_title": "Window Start",
+            "date_abbreviate": true
+          }
+        },
+        "table.cell_column": "max",
+        "table.column_formatting": [
+          {
+            "colors": [
+              "hsla(358, 71%, 62%, 1)",
+              "hsla(46, 81%,  52%, 1)",
+              "hsla(89, 48%, 40%, 1)"
+            ],
+            "columns": [
+              "max"
+            ],
+            "max_type": null,
+            "max_value": 100,
+            "min_type": null,
+            "min_value": 0,
+            "type": "range"
+          }
+        ],
+        "table.pivot_column": "port_name",
+        "table.row_index": true
+      }
+    },
+    {
+      "action_id": null,
+      "card_id": 42,
+      "col": 0,
+      "dashboard_tab_id": null,
+      "inline_parameters": [],
+      "parameter_mappings": [
+        {
+          "card_id": 42,
+          "parameter_id": "f247577e",
+          "target": [
+            "dimension",
+            [
+              "field",
+              106,
+              {
+                "base-type": "type/Text"
+              }
+            ],
+            {
+              "stage-number": 0
+            }
+          ]
+        },
+        {
+          "card_id": 42,
+          "parameter_id": "e5e37f1",
+          "target": [
+            "dimension",
+            [
+              "field",
+              "Community ID",
+              {
+                "base-type": "type/BigInteger"
+              }
+            ],
+            {
+              "stage-number": 1
+            }
+          ]
+        },
+        {
+          "card_id": 42,
+          "parameter_id": "32760e99",
+          "target": [
+            "dimension",
+            [
+              "field",
+              99,
+              {
+                "base-type": "type/Text"
+              }
+            ],
+            {
+              "stage-number": 0
+            }
+          ]
+        }
+      ],
+      "row": 5,
+      "series": [],
+      "size_x": 12,
+      "size_y": 7,
+      "visualization_settings": {}
+    },
+    {
+      "action_id": null,
+      "card_id": 43,
+      "col": 12,
+      "dashboard_tab_id": null,
+      "inline_parameters": [],
+      "parameter_mappings": [
+        {
+          "card_id": 43,
+          "parameter_id": "f247577e",
+          "target": [
+            "dimension",
+            [
+              "field",
+              106,
+              {
+                "base-type": "type/Text"
+              }
+            ],
+            {
+              "stage-number": 0
+            }
+          ]
+        },
+        {
+          "card_id": 43,
+          "parameter_id": "e5e37f1",
+          "target": [
+            "dimension",
+            [
+              "field",
+              "community_id",
+              {
+                "base-type": "type/BigInteger"
+              }
+            ],
+            {
+              "stage-number": 1
+            }
+          ]
+        },
+        {
+          "card_id": 43,
+          "parameter_id": "32760e99",
+          "target": [
+            "dimension",
+            [
+              "field",
+              99,
+              {
+                "base-type": "type/Text"
+              }
+            ],
+            {
+              "stage-number": 0
+            }
+          ]
+        }
+      ],
+      "row": 5,
+      "series": [],
+      "size_x": 12,
+      "size_y": 7,
+      "visualization_settings": {}
+    }
+  ],
+  "description": null,
+  "id": 2,
+  "name": "Norway Port Graph Analytics ",
+  "parameters": [
+    {
+      "default": [
+        "Norway"
+      ],
+      "id": "f247577e",
+      "name": "Location",
+      "required": true,
+      "sectionId": "location",
+      "slug": "location",
+      "type": "string/="
+    },
+    {
+      "default": [
+        "2026-09-01T00:00:00Z"
+      ],
+      "filteringParameters": [
+        "f247577e"
+      ],
+      "id": "32760e99",
+      "isMultiSelect": false,
+      "name": "Date",
+      "required": true,
+      "sectionId": "string",
+      "slug": "date",
+      "type": "string/="
+    },
+    {
+      "id": "e5e37f1",
+      "name": "Community ID",
+      "sectionId": "number",
+      "slug": "community_id",
+      "type": "number/="
+    }
+  ],
+  "tabs": [],
+  "width": "full"
+}

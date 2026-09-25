@@ -11,6 +11,8 @@ for suite in \
   pipelines/graph_metrics/tests \
   pipelines/historic_ais/tests \
   pipelines/hais/tests \
+  airbyte/tests \
+  metabase/tests \
   airflow/tests; do
   python -m unittest discover -s "$suite" -p 'test_*.py' -v
 done

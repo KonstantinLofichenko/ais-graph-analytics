@@ -1,0 +1,23 @@
+{
+  "format": "airbyte-countries-to-clickhouse-config-export",
+  "format_version": 1,
+  "name": "Countries API to ClickHouse",
+  "source": "Local Airbyte public API; source, destination, and connection fetched live",
+  "live_api_verified": true,
+  "files": {
+    "connector_builder_manifest": "countries-api-connector.yaml",
+    "source": "countries-api-source.json",
+    "destination": "clickhouse-destination.json",
+    "connection": "countries-to-clickhouse-connection.json"
+  },
+  "required_placeholders": [
+    "REPLACE_WITH_AIRBYTE_WORKSPACE_ID",
+    "REPLACE_WITH_COUNTRIES_SOURCE_DEFINITION_ID",
+    "REPLACE_WITH_REST_COUNTRIES_API_KEY",
+    "REPLACE_WITH_CLICKHOUSE_PASSWORD",
+    "REPLACE_WITH_CREATED_SOURCE_ID",
+    "REPLACE_WITH_CREATED_DESTINATION_ID"
+  ],
+  "verified_at_utc": "2026-09-25T04:05:00+00:00",
+  "connector_builder_manifest_source": "Previously exported Connector Builder YAML (2026-09-24); not returned by the public API"
+}

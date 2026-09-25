@@ -1,0 +1,150 @@
+{
+  "cache_ttl": null,
+  "dataset_query": {
+    "database": 2,
+    "lib/type": "mbql/query",
+    "stages": [
+      {
+        "aggregation": [
+          [
+            "sum",
+            {
+              "display-name": "Port Centrality Score",
+              "effective-type": "type/Float",
+              "lib/uuid": "54cdef40-d748-4d3d-85ca-909a332ed884",
+              "name": "Port Centrality Score"
+            },
+            [
+              "field",
+              {
+                "base-type": "type/Float",
+                "effective-type": "type/Float",
+                "lib/uuid": "0be2f363-dc43-43e8-aaac-84380a9ffa18"
+              },
+              111
+            ]
+          ],
+          [
+            "sum",
+            {
+              "display-name": "Community ID",
+              "lib/uuid": "d5f5e016-6060-4ec8-9b21-16a85f76d5d3",
+              "name": "Community ID"
+            },
+            [
+              "field",
+              {
+                "base-type": "type/BigInteger",
+                "effective-type": "type/BigInteger",
+                "lib/uuid": "790a3bc9-64c9-430d-acf4-4b286554b69a"
+              },
+              112
+            ]
+          ],
+          [
+            "sum",
+            {
+              "display-name": "Unique Vessels",
+              "lib/uuid": "8f693f3e-cf04-466e-846d-33e82eeddd96",
+              "name": "Unique Vessels"
+            },
+            [
+              "field",
+              {
+                "base-type": "type/BigInteger",
+                "effective-type": "type/BigInteger",
+                "lib/uuid": "b0dff0df-fa59-4ddf-97e6-ec1a957fd753"
+              },
+              144
+            ]
+          ],
+          [
+            "sum",
+            {
+              "display-name": "Visit Count",
+              "lib/uuid": "ba94506c-059a-43ee-8262-2b69a7c37b5c",
+              "name": "Visit Count"
+            },
+            [
+              "field",
+              {
+                "base-type": "type/BigInteger",
+                "effective-type": "type/BigInteger",
+                "lib/uuid": "dd9c2a8c-2fb9-4027-ba8b-f15a9652e5dd"
+              },
+              145
+            ]
+          ]
+        ],
+        "breakout": [
+          [
+            "field",
+            {
+              "base-type": "type/Text",
+              "effective-type": "type/Text",
+              "lib/uuid": "44ddddbf-c018-4cff-a772-d7d5179ec9f3"
+            },
+            104
+          ],
+          [
+            "field",
+            {
+              "base-type": "type/Float",
+              "binning": {
+                "bin-width": 0.1,
+                "strategy": "bin-width"
+              },
+              "effective-type": "type/Float",
+              "lib/uuid": "679df800-a06c-4862-b5e9-746160119d31"
+            },
+            109
+          ],
+          [
+            "field",
+            {
+              "base-type": "type/Float",
+              "binning": {
+                "bin-width": 0.1,
+                "strategy": "bin-width"
+              },
+              "effective-type": "type/Float",
+              "lib/uuid": "3ec203f7-1b8e-4a1d-a9a3-a6c57f7a3ad1"
+            },
+            110
+          ]
+        ],
+        "filters": [
+          [
+            "not-null",
+            {
+              "lib/uuid": "df1efd7e-8fed-4206-8644-aa10b4720c06"
+            },
+            [
+              "field",
+              {
+                "base-type": "type/Float",
+                "effective-type": "type/Float",
+                "lib/uuid": "ee8bba98-89a8-446e-9cfe-14368019cb11"
+              },
+              111
+            ]
+          ]
+        ],
+        "lib/type": "mbql.stage/mbql",
+        "source-table": 12
+      }
+    ]
+  },
+  "description": null,
+  "display": "map",
+  "id": 42,
+  "name": "Port Map",
+  "parameter_mappings": [],
+  "parameters": [],
+  "type": "question",
+  "visualization_settings": {
+    "map.pin_type": "markers",
+    "map.region": "world_countries",
+    "map.type": "pin"
+  }
+}

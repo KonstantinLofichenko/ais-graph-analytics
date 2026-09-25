@@ -1,0 +1,18 @@
+{
+  "name": "ClickHouse",
+  "workspaceId": "REPLACE_WITH_AIRBYTE_WORKSPACE_ID",
+  "destinationType": "clickhouse",
+  "configuration": {
+    "host": "host.docker.internal",
+    "port": "8123",
+    "database": "raw",
+    "password": "REPLACE_WITH_CLICKHOUSE_PASSWORD",
+    "protocol": "http",
+    "username": "default",
+    "enable_json": false,
+    "tunnel_method": {
+      "tunnel_method": "NO_TUNNEL"
+    },
+    "use_replicated_engines": false
+  }
+}
