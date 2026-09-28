@@ -11,6 +11,7 @@ for suite in \
   pipelines/graph_metrics/tests \
   pipelines/historic_ais/tests \
   pipelines/hais/tests \
+  pipelines/ai_enrichment/tests \
   airbyte/tests \
   metabase/tests \
   airflow/tests; do

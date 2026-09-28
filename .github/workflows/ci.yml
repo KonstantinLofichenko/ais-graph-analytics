@@ -42,7 +42,7 @@ jobs:
           persist-credentials: false
       - name: Build the project Airflow image
         run: docker build --file airflow/Dockerfile --tag ais-airflow-ci .
-      - name: Run isolated tests without network or live services
+      - name: Run isolated pipeline, AI enrichment, and Airflow tests
         run: |
           docker run --rm --network none \
             --volume "$PWD:/workspace:ro" --workdir /workspace \
