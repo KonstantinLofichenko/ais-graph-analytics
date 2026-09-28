@@ -1,0 +1,17 @@
+navigational_status,navigational_status_name
+0,Under way using engine
+1,At anchor
+2,Not under command
+3,Restricted manoeuvrability
+4,Constrained by draught
+5,Moored
+6,Aground
+7,Engaged in fishing
+8,Under way sailing
+9,Reserved - hazardous cargo HSC
+10,Reserved - hazardous cargo WIG
+11,Power-driven vessel towing astern
+12,Power-driven vessel pushing ahead or towing alongside
+13,Reserved for future use
+14,AIS-SART MOB-AIS or EPIRB-AIS active
+15,Not defined

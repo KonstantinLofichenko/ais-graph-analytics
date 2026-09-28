@@ -29,8 +29,43 @@ uses `COPY`, so restarting alone does not load these changes. After code changes
 run `docker compose --profile batch up -d --build airflow` from the repository root.
 The image copies only explicitly allowed code and SQL files, never root `.env`.
 Compose injects only the database
-credentials required by this batch. Inside Docker the targets are
+credentials and API key required by configured batches. Inside Docker the targets are
 `http://ais-clickhouse:8123` and `bolt://neo4j:7687`.
+
+## Daily dbt and vessel AI pipeline
+
+`daily_ais_pipeline` is manually triggered (`schedule=None`), with no catchup and
+one active run:
+
+```text
+dbt_core -> dbt_vessel_daily_features -> ai_enrichment
+  -> dbt_vessel_daily_enriched -> dbt_tests
+```
+
+The core step seeds ship types and navigational statuses, then builds `+vessels`.
+The AI task uses the UTC day before the DAG run's logical date and processes up
+to 100 new vessel-days per run by default. Set `AI_ENRICHMENT_LIMIT` to change
+that cap; an explicit `--limit` overrides it for standalone runs. The final mart
+can contain unenriched rows when the cap is reached. A task failure stops the
+following tasks. Set `OPENAI_API_KEY` in the
+untracked `.env` before enabling this DAG; the Compose service passes it into
+Airflow. The existing `dbt/profiles.yml.example` is copied into the image as the
+profile, using ClickHouse credentials from environment variables. The AI output
+table must exist; on an existing ClickHouse volume, apply
+`clickhouse/init/03_vessel_ai_enrichment.sql` manually if it was not applied during
+initialization. This DAG does not perform historical AIS ingestion or Neo4j work.
+
+Manual dbt and AI commands remain available from the repository root. For a safe
+container check, use:
+
+```sh
+docker compose exec airflow python -m pipelines.ai_enrichment.enrich_vessels \
+  --date 2026-09-22 --limit 1
+```
+
+The DAG has no automatic schedule. A manual trigger uses the previous UTC date
+relative to that run's logical date. Check the API key and expected AI volume
+before triggering a run.
 
 ## Three tasks
 

@@ -13,6 +13,7 @@ __pycache__/
 *.so
 .Python
 .venv/
+.venv-ai/
 venv/
 env/
 ENV/

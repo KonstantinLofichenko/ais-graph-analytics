@@ -1,0 +1,20 @@
+version: 2
+
+models:
+  - name: vessel_daily_features
+    columns:
+      - name: mmsi
+        data_tests:
+          - not_null
+      - name: activity_date
+        data_tests:
+          - not_null
+
+  - name: vessel_daily_enriched
+    columns:
+      - name: mmsi
+        data_tests:
+          - not_null
+      - name: activity_date
+        data_tests:
+          - not_null

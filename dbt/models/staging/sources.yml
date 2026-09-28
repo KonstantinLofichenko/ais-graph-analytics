@@ -27,3 +27,6 @@ sources:
 
       - name: ports
         description: "Port reference data used by the port visit and graph pipelines."
+
+      - name: vessel_ai_enrichment
+        description: "AI enrichment data for vessels, including activity classification and notable behaviors."
