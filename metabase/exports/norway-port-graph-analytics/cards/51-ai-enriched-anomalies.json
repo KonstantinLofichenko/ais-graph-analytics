@@ -1,0 +1,161 @@
+{
+  "cache_ttl": null,
+  "dataset_query": {
+    "database": 2,
+    "lib/type": "mbql/query",
+    "stages": [
+      {
+        "aggregation": [
+          [
+            "distinct",
+            {
+              "effective-type": "type/Integer",
+              "lib/uuid": "8879132d-ad90-49ab-b901-6a402a4185c7"
+            },
+            [
+              "field",
+              {
+                "base-type": "type/Integer",
+                "effective-type": "type/Integer",
+                "lib/uuid": "e356aca9-cc99-472f-84ac-e4db1ba252ca"
+              },
+              276
+            ]
+          ]
+        ],
+        "filters": [
+          [
+            "=",
+            {
+              "lib/uuid": "6de589d9-4c01-4cdb-8b01-3aad14c31aa0"
+            },
+            [
+              "field",
+              {
+                "base-type": "type/Integer",
+                "effective-type": "type/Integer",
+                "join-alias": "Vessel Daily Enriched - Mmsi",
+                "lib/uuid": "f71ada76-c727-4c89-90fb-503113edc5f7"
+              },
+              275
+            ],
+            1
+          ],
+          [
+            "=",
+            {
+              "lib/uuid": "ee2a71de-dd01-46e1-a334-d32f8a202233"
+            },
+            [
+              "field",
+              {
+                "base-type": "type/Text",
+                "effective-type": "type/Text",
+                "join-alias": "Vessel Daily Enriched - Mmsi",
+                "lib/uuid": "979a5670-e201-40ab-8b1e-d484d894792a"
+              },
+              269
+            ],
+            "vessel_anomaly_v1"
+          ],
+          [
+            "<=",
+            {
+              "lib/uuid": "02248096-59a9-46a1-9d87-098e69ea3be9"
+            },
+            [
+              "field",
+              {
+                "base-type": "type/Integer",
+                "effective-type": "type/Integer",
+                "lib/uuid": "c6ad59cd-bdbb-4ff5-a42f-32229ea062ca"
+              },
+              304
+            ],
+            100
+          ]
+        ],
+        "joins": [
+          {
+            "alias": "Vessel Daily Enriched - Mmsi",
+            "conditions": [
+              [
+                "=",
+                {
+                  "lib/uuid": "8a31a204-fe8e-4d1c-8d2b-0f5ccd499b46"
+                },
+                [
+                  "field",
+                  {
+                    "base-type": "type/Integer",
+                    "effective-type": "type/Integer",
+                    "lib/uuid": "4380907b-133f-4cc5-b4fb-3b35d2580384"
+                  },
+                  276
+                ],
+                [
+                  "field",
+                  {
+                    "base-type": "type/Integer",
+                    "effective-type": "type/Integer",
+                    "join-alias": "Vessel Daily Enriched - Mmsi",
+                    "lib/uuid": "d3051b52-d65c-4811-87af-8b6efa8fb743"
+                  },
+                  244
+                ]
+              ],
+              [
+                "=",
+                {
+                  "lib/uuid": "9163bae5-0164-4349-9241-254d0e0b480e"
+                },
+                [
+                  "field",
+                  {
+                    "base-type": "type/Date",
+                    "effective-type": "type/Date",
+                    "lib/uuid": "11e65d33-6c4e-4d26-9ae5-7991fa150c7e",
+                    "temporal-unit": "day"
+                  },
+                  277
+                ],
+                [
+                  "field",
+                  {
+                    "base-type": "type/Date",
+                    "effective-type": "type/Date",
+                    "join-alias": "Vessel Daily Enriched - Mmsi",
+                    "lib/uuid": "5a2ace48-36c8-475a-bcd9-d1d72827aafc",
+                    "temporal-unit": "day"
+                  },
+                  245
+                ]
+              ]
+            ],
+            "fields": "all",
+            "lib/type": "mbql/join",
+            "stages": [
+              {
+                "lib/type": "mbql.stage/mbql",
+                "source-table": 24
+              }
+            ],
+            "strategy": "inner-join"
+          }
+        ],
+        "lib/type": "mbql.stage/mbql",
+        "source-table": 25
+      }
+    ]
+  },
+  "description": null,
+  "display": "scalar",
+  "id": 51,
+  "name": "AI-enriched anomalies",
+  "parameter_mappings": [],
+  "parameters": [],
+  "type": "question",
+  "visualization_settings": {
+    "scalar.segments": []
+  }
+}

@@ -1,0 +1,179 @@
+{
+  "cache_ttl": null,
+  "dataset_query": {
+    "database": 2,
+    "lib/type": "mbql/query",
+    "stages": [
+      {
+        "breakout": [
+          [
+            "field",
+            {
+              "base-type": "type/Text",
+              "effective-type": "type/Text",
+              "lib/uuid": "50252db5-22ca-43d1-b952-b7442d8e1e32"
+            },
+            159
+          ],
+          [
+            "field",
+            {
+              "base-type": "type/Integer",
+              "effective-type": "type/Integer",
+              "lib/uuid": "7a1a8603-c323-4c16-a800-739fc67a2159"
+            },
+            158
+          ],
+          [
+            "field",
+            {
+              "base-type": "type/Text",
+              "effective-type": "type/Text",
+              "lib/uuid": "3ee0218d-885e-47a8-bde1-3248c2c89922"
+            },
+            191
+          ],
+          [
+            "field",
+            {
+              "base-type": "type/Text",
+              "effective-type": "type/Text",
+              "lib/uuid": "57df5ead-1d72-4790-ba71-cff7962d7438"
+            },
+            192
+          ],
+          [
+            "field",
+            {
+              "base-type": "type/Text",
+              "effective-type": "type/Text",
+              "lib/uuid": "b0724dfa-e6c7-4ebd-b69b-8793e34d83fd"
+            },
+            202
+          ],
+          [
+            "field",
+            {
+              "base-type": "type/Float",
+              "effective-type": "type/Float",
+              "lib/uuid": "11348d4f-14a9-4828-bdec-9ab2763566c6"
+            },
+            194
+          ],
+          [
+            "field",
+            {
+              "base-type": "type/Float",
+              "effective-type": "type/Float",
+              "lib/uuid": "ecdc2b7b-470c-4fba-b92c-8e1042c9abb9"
+            },
+            195
+          ],
+          [
+            "field",
+            {
+              "base-type": "type/Float",
+              "effective-type": "type/Float",
+              "lib/uuid": "3025defd-e210-4fad-8f57-b1dfe425991f"
+            },
+            198
+          ],
+          [
+            "field",
+            {
+              "base-type": "type/DateTimeWithLocalTZ",
+              "effective-type": "type/DateTimeWithLocalTZ",
+              "lib/uuid": "5156074c-503d-4ff0-b977-d85567eccdb4",
+              "temporal-unit": "day"
+            },
+            161
+          ],
+          [
+            "field",
+            {
+              "base-type": "type/DateTimeWithLocalTZ",
+              "effective-type": "type/DateTimeWithLocalTZ",
+              "lib/uuid": "75149bff-b33c-420f-859a-9ca11d16acac",
+              "temporal-unit": "day"
+            },
+            162
+          ],
+          [
+            "field",
+            {
+              "base-type": "type/BigInteger",
+              "effective-type": "type/BigInteger",
+              "lib/uuid": "93f3c2a6-a6d1-413a-805f-abf9c327a8eb"
+            },
+            193
+          ],
+          [
+            "field",
+            {
+              "base-type": "type/BigInteger",
+              "effective-type": "type/BigInteger",
+              "lib/uuid": "788fabc6-0c96-4991-bd42-fe7c32010894"
+            },
+            163
+          ],
+          [
+            "field",
+            {
+              "base-type": "type/Integer",
+              "effective-type": "type/Integer",
+              "lib/uuid": "798c439b-ad89-4c57-91da-742321183266"
+            },
+            204
+          ],
+          [
+            "field",
+            {
+              "base-type": "type/Integer",
+              "effective-type": "type/Integer",
+              "lib/uuid": "11730c71-5509-4a2d-8d77-1f41826c4bd9"
+            },
+            207
+          ]
+        ],
+        "lib/type": "mbql.stage/mbql",
+        "order-by": [
+          [
+            "desc",
+            {
+              "lib/uuid": "f72532ec-7095-43da-824d-9238a1ae04cb"
+            },
+            [
+              "field",
+              {
+                "base-type": "type/BigInteger",
+                "effective-type": "type/BigInteger",
+                "lib/uuid": "18cf1586-835c-4490-ada9-f8fe7fe0e663"
+              },
+              193
+            ]
+          ]
+        ],
+        "source-table": 18
+      }
+    ]
+  },
+  "description": null,
+  "display": "table",
+  "id": 49,
+  "name": "Vessel Details",
+  "parameter_mappings": [],
+  "parameters": [],
+  "type": "question",
+  "visualization_settings": {
+    "column_settings": {
+      "[\"name\",\"first_seen\"]": {
+        "date_abbreviate": true
+      },
+      "[\"name\",\"last_seen\"]": {
+        "date_abbreviate": true
+      }
+    },
+    "table.cell_column": "has_unknown_ship_type",
+    "table.pivot_column": "has_identity_conflict"
+  }
+}

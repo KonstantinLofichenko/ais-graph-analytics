@@ -1,0 +1,66 @@
+{
+  "cache_ttl": null,
+  "dataset_query": {
+    "database": 2,
+    "lib/type": "mbql/query",
+    "stages": [
+      {
+        "aggregation": [
+          [
+            "count",
+            {
+              "lib/uuid": "55640903-61f3-4b00-8868-43605a718f52"
+            }
+          ]
+        ],
+        "filters": [
+          [
+            "=",
+            {
+              "lib/uuid": "7570e9fc-b638-462a-88c1-91321e6855ba"
+            },
+            [
+              "field",
+              {
+                "base-type": "type/Integer",
+                "effective-type": "type/Integer",
+                "lib/uuid": "36bbaf3d-a6b8-4eb0-b856-6a6d928cd7d4"
+              },
+              206
+            ],
+            1
+          ],
+          [
+            "time-interval",
+            {
+              "lib/uuid": "fa81d439-a5bb-4b1f-82ad-23a72ae9e6e4"
+            },
+            [
+              "field",
+              {
+                "base-type": "type/DateTimeWithLocalTZ",
+                "effective-type": "type/DateTimeWithLocalTZ",
+                "lib/uuid": "8c90a9b9-6c63-4089-927c-6030c07199af"
+              },
+              162
+            ],
+            -24,
+            "hour"
+          ]
+        ],
+        "lib/type": "mbql.stage/mbql",
+        "source-table": 18
+      }
+    ]
+  },
+  "description": null,
+  "display": "scalar",
+  "id": 45,
+  "name": "Active Vessels — Last 24h",
+  "parameter_mappings": [],
+  "parameters": [],
+  "type": "question",
+  "visualization_settings": {
+    "scalar.segments": []
+  }
+}

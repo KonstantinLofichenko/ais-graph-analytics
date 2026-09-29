@@ -6,7 +6,7 @@
       "action_id": null,
       "card_id": 40,
       "col": 0,
-      "dashboard_tab_id": null,
+      "dashboard_tab_id": 4,
       "inline_parameters": [],
       "parameter_mappings": [
         {
@@ -107,7 +107,7 @@
       "action_id": null,
       "card_id": 41,
       "col": 12,
-      "dashboard_tab_id": null,
+      "dashboard_tab_id": 4,
       "inline_parameters": [],
       "parameter_mappings": [
         {
@@ -206,7 +206,7 @@
       "action_id": null,
       "card_id": 42,
       "col": 0,
-      "dashboard_tab_id": null,
+      "dashboard_tab_id": 4,
       "inline_parameters": [],
       "parameter_mappings": [
         {
@@ -271,7 +271,7 @@
       "action_id": null,
       "card_id": 43,
       "col": 12,
-      "dashboard_tab_id": null,
+      "dashboard_tab_id": 4,
       "inline_parameters": [],
       "parameter_mappings": [
         {
@@ -331,6 +331,818 @@
       "size_x": 12,
       "size_y": 7,
       "visualization_settings": {}
+    },
+    {
+      "action_id": null,
+      "card_id": 44,
+      "col": 0,
+      "dashboard_tab_id": 5,
+      "inline_parameters": [],
+      "parameter_mappings": [
+        {
+          "card_id": 44,
+          "parameter_id": "a5a32147",
+          "target": [
+            "dimension",
+            [
+              "field",
+              159,
+              {
+                "base-type": "type/Text"
+              }
+            ],
+            {
+              "stage-number": 0
+            }
+          ]
+        },
+        {
+          "card_id": 44,
+          "parameter_id": "a0d1a8c3",
+          "target": [
+            "dimension",
+            [
+              "field",
+              192,
+              {
+                "base-type": "type/Text"
+              }
+            ],
+            {
+              "stage-number": 0
+            }
+          ]
+        },
+        {
+          "card_id": 44,
+          "parameter_id": "9954d772",
+          "target": [
+            "dimension",
+            [
+              "field",
+              202,
+              {
+                "base-type": "type/Text"
+              }
+            ],
+            {
+              "stage-number": 0
+            }
+          ]
+        },
+        {
+          "card_id": 44,
+          "parameter_id": "afd55c8c",
+          "target": [
+            "dimension",
+            [
+              "field",
+              162,
+              {
+                "base-type": "type/DateTimeWithLocalTZ"
+              }
+            ],
+            {
+              "stage-number": 0
+            }
+          ]
+        },
+        {
+          "card_id": 44,
+          "parameter_id": "968d076d",
+          "target": [
+            "dimension",
+            [
+              "field",
+              191,
+              {
+                "base-type": "type/Text"
+              }
+            ],
+            {
+              "stage-number": 0
+            }
+          ]
+        }
+      ],
+      "row": 0,
+      "series": [],
+      "size_x": 6,
+      "size_y": 2,
+      "visualization_settings": {}
+    },
+    {
+      "action_id": null,
+      "card_id": 45,
+      "col": 6,
+      "dashboard_tab_id": 5,
+      "inline_parameters": [],
+      "parameter_mappings": [
+        {
+          "card_id": 45,
+          "parameter_id": "a5a32147",
+          "target": [
+            "dimension",
+            [
+              "field",
+              159,
+              {
+                "base-type": "type/Text"
+              }
+            ],
+            {
+              "stage-number": 0
+            }
+          ]
+        },
+        {
+          "card_id": 45,
+          "parameter_id": "a0d1a8c3",
+          "target": [
+            "dimension",
+            [
+              "field",
+              192,
+              {
+                "base-type": "type/Text"
+              }
+            ],
+            {
+              "stage-number": 0
+            }
+          ]
+        },
+        {
+          "card_id": 45,
+          "parameter_id": "9954d772",
+          "target": [
+            "dimension",
+            [
+              "field",
+              202,
+              {
+                "base-type": "type/Text"
+              }
+            ],
+            {
+              "stage-number": 0
+            }
+          ]
+        },
+        {
+          "card_id": 45,
+          "parameter_id": "afd55c8c",
+          "target": [
+            "dimension",
+            [
+              "field",
+              162,
+              {
+                "base-type": "type/DateTimeWithLocalTZ"
+              }
+            ],
+            {
+              "stage-number": 0
+            }
+          ]
+        },
+        {
+          "card_id": 45,
+          "parameter_id": "968d076d",
+          "target": [
+            "dimension",
+            [
+              "field",
+              191,
+              {
+                "base-type": "type/Text"
+              }
+            ],
+            {
+              "stage-number": 0
+            }
+          ]
+        }
+      ],
+      "row": 0,
+      "series": [],
+      "size_x": 6,
+      "size_y": 2,
+      "visualization_settings": {}
+    },
+    {
+      "action_id": null,
+      "card_id": 46,
+      "col": 12,
+      "dashboard_tab_id": 5,
+      "inline_parameters": [],
+      "parameter_mappings": [
+        {
+          "card_id": 46,
+          "parameter_id": "a5a32147",
+          "target": [
+            "dimension",
+            [
+              "field",
+              159,
+              {
+                "base-type": "type/Text"
+              }
+            ],
+            {
+              "stage-number": 0
+            }
+          ]
+        },
+        {
+          "card_id": 46,
+          "parameter_id": "a0d1a8c3",
+          "target": [
+            "dimension",
+            [
+              "field",
+              192,
+              {
+                "base-type": "type/Text"
+              }
+            ],
+            {
+              "stage-number": 0
+            }
+          ]
+        },
+        {
+          "card_id": 46,
+          "parameter_id": "9954d772",
+          "target": [
+            "dimension",
+            [
+              "field",
+              202,
+              {
+                "base-type": "type/Text"
+              }
+            ],
+            {
+              "stage-number": 0
+            }
+          ]
+        },
+        {
+          "card_id": 46,
+          "parameter_id": "afd55c8c",
+          "target": [
+            "dimension",
+            [
+              "field",
+              162,
+              {
+                "base-type": "type/DateTimeWithLocalTZ"
+              }
+            ],
+            {
+              "stage-number": 0
+            }
+          ]
+        },
+        {
+          "card_id": 46,
+          "parameter_id": "968d076d",
+          "target": [
+            "dimension",
+            [
+              "field",
+              191,
+              {
+                "base-type": "type/Text"
+              }
+            ],
+            {
+              "stage-number": 0
+            }
+          ]
+        }
+      ],
+      "row": 0,
+      "series": [],
+      "size_x": 12,
+      "size_y": 7,
+      "visualization_settings": {}
+    },
+    {
+      "action_id": null,
+      "card_id": 47,
+      "col": 12,
+      "dashboard_tab_id": 5,
+      "inline_parameters": [],
+      "parameter_mappings": [
+        {
+          "card_id": 47,
+          "parameter_id": "a5a32147",
+          "target": [
+            "dimension",
+            [
+              "field",
+              159,
+              {
+                "base-type": "type/Text"
+              }
+            ],
+            {
+              "stage-number": 0
+            }
+          ]
+        },
+        {
+          "card_id": 47,
+          "parameter_id": "a0d1a8c3",
+          "target": [
+            "dimension",
+            [
+              "field",
+              192,
+              {
+                "base-type": "type/Text"
+              }
+            ],
+            {
+              "stage-number": 0
+            }
+          ]
+        },
+        {
+          "card_id": 47,
+          "parameter_id": "9954d772",
+          "target": [
+            "dimension",
+            [
+              "field",
+              202,
+              {
+                "base-type": "type/Text"
+              }
+            ],
+            {
+              "stage-number": 0
+            }
+          ]
+        },
+        {
+          "card_id": 47,
+          "parameter_id": "afd55c8c",
+          "target": [
+            "dimension",
+            [
+              "field",
+              162,
+              {
+                "base-type": "type/DateTimeWithLocalTZ"
+              }
+            ],
+            {
+              "stage-number": 0
+            }
+          ]
+        },
+        {
+          "card_id": 47,
+          "parameter_id": "968d076d",
+          "target": [
+            "dimension",
+            [
+              "field",
+              191,
+              {
+                "base-type": "type/Text"
+              }
+            ],
+            {
+              "stage-number": 0
+            }
+          ]
+        }
+      ],
+      "row": 7,
+      "series": [],
+      "size_x": 12,
+      "size_y": 7,
+      "visualization_settings": {}
+    },
+    {
+      "action_id": null,
+      "card_id": 48,
+      "col": 0,
+      "dashboard_tab_id": 5,
+      "inline_parameters": [],
+      "parameter_mappings": [
+        {
+          "card_id": 48,
+          "parameter_id": "a5a32147",
+          "target": [
+            "dimension",
+            [
+              "field",
+              159,
+              {
+                "base-type": "type/Text"
+              }
+            ],
+            {
+              "stage-number": 0
+            }
+          ]
+        },
+        {
+          "card_id": 48,
+          "parameter_id": "a0d1a8c3",
+          "target": [
+            "dimension",
+            [
+              "field",
+              192,
+              {
+                "base-type": "type/Text"
+              }
+            ],
+            {
+              "stage-number": 0
+            }
+          ]
+        },
+        {
+          "card_id": 48,
+          "parameter_id": "9954d772",
+          "target": [
+            "dimension",
+            [
+              "field",
+              202,
+              {
+                "base-type": "type/Text"
+              }
+            ],
+            {
+              "stage-number": 0
+            }
+          ]
+        },
+        {
+          "card_id": 48,
+          "parameter_id": "afd55c8c",
+          "target": [
+            "dimension",
+            [
+              "field",
+              162,
+              {
+                "base-type": "type/DateTimeWithLocalTZ"
+              }
+            ],
+            {
+              "stage-number": 0
+            }
+          ]
+        },
+        {
+          "card_id": 48,
+          "parameter_id": "968d076d",
+          "target": [
+            "dimension",
+            [
+              "field",
+              "ship_type_name",
+              {
+                "base-type": "type/Text"
+              }
+            ],
+            {
+              "stage-number": 1
+            }
+          ]
+        }
+      ],
+      "row": 2,
+      "series": [],
+      "size_x": 12,
+      "size_y": 12,
+      "visualization_settings": {}
+    },
+    {
+      "action_id": null,
+      "card_id": 49,
+      "col": 0,
+      "dashboard_tab_id": 5,
+      "inline_parameters": [],
+      "parameter_mappings": [
+        {
+          "card_id": 49,
+          "parameter_id": "a5a32147",
+          "target": [
+            "dimension",
+            [
+              "field",
+              159,
+              {
+                "base-type": "type/Text"
+              }
+            ],
+            {
+              "stage-number": 0
+            }
+          ]
+        },
+        {
+          "card_id": 49,
+          "parameter_id": "a0d1a8c3",
+          "target": [
+            "dimension",
+            [
+              "field",
+              192,
+              {
+                "base-type": "type/Text"
+              }
+            ],
+            {
+              "stage-number": 0
+            }
+          ]
+        },
+        {
+          "card_id": 49,
+          "parameter_id": "9954d772",
+          "target": [
+            "dimension",
+            [
+              "field",
+              "last_navigational_status_name",
+              {
+                "base-type": "type/Text"
+              }
+            ],
+            {
+              "stage-number": 1
+            }
+          ]
+        },
+        {
+          "card_id": 49,
+          "parameter_id": "afd55c8c",
+          "target": [
+            "dimension",
+            [
+              "field",
+              162,
+              {
+                "base-type": "type/DateTimeWithLocalTZ"
+              }
+            ],
+            {
+              "stage-number": 0
+            }
+          ]
+        },
+        {
+          "card_id": 49,
+          "parameter_id": "968d076d",
+          "target": [
+            "dimension",
+            [
+              "field",
+              "ship_type_name",
+              {
+                "base-type": "type/Text"
+              }
+            ],
+            {
+              "stage-number": 1
+            }
+          ]
+        }
+      ],
+      "row": 14,
+      "series": [],
+      "size_x": 24,
+      "size_y": 9,
+      "visualization_settings": {}
+    },
+    {
+      "action_id": null,
+      "card_id": 50,
+      "col": 0,
+      "dashboard_tab_id": 6,
+      "inline_parameters": [],
+      "parameter_mappings": [
+        {
+          "card_id": 50,
+          "parameter_id": "1d9e4fac",
+          "target": [
+            "dimension",
+            [
+              "field",
+              277,
+              {
+                "base-type": "type/Date"
+              }
+            ],
+            {
+              "stage-number": 0
+            }
+          ]
+        }
+      ],
+      "row": 0,
+      "series": [],
+      "size_x": 6,
+      "size_y": 2,
+      "visualization_settings": {}
+    },
+    {
+      "action_id": null,
+      "card_id": 51,
+      "col": 6,
+      "dashboard_tab_id": 6,
+      "inline_parameters": [],
+      "parameter_mappings": [
+        {
+          "card_id": 51,
+          "parameter_id": "1d9e4fac",
+          "target": [
+            "dimension",
+            [
+              "field",
+              277,
+              {
+                "base-type": "type/Date"
+              }
+            ],
+            {
+              "stage-number": 0
+            }
+          ]
+        }
+      ],
+      "row": 0,
+      "series": [],
+      "size_x": 6,
+      "size_y": 2,
+      "visualization_settings": {}
+    },
+    {
+      "action_id": null,
+      "card_id": 52,
+      "col": 12,
+      "dashboard_tab_id": 6,
+      "inline_parameters": [],
+      "parameter_mappings": [
+        {
+          "card_id": 52,
+          "parameter_id": "1d9e4fac",
+          "target": [
+            "dimension",
+            [
+              "field",
+              277,
+              {
+                "base-type": "type/Date"
+              }
+            ],
+            {
+              "stage-number": 0
+            }
+          ]
+        }
+      ],
+      "row": 0,
+      "series": [],
+      "size_x": 6,
+      "size_y": 2,
+      "visualization_settings": {}
+    },
+    {
+      "action_id": null,
+      "card_id": 53,
+      "col": 18,
+      "dashboard_tab_id": 6,
+      "inline_parameters": [],
+      "parameter_mappings": [
+        {
+          "card_id": 53,
+          "parameter_id": "1d9e4fac",
+          "target": [
+            "dimension",
+            [
+              "field",
+              277,
+              {
+                "base-type": "type/Date"
+              }
+            ],
+            {
+              "stage-number": 0
+            }
+          ]
+        }
+      ],
+      "row": 0,
+      "series": [],
+      "size_x": 6,
+      "size_y": 2,
+      "visualization_settings": {}
+    },
+    {
+      "action_id": null,
+      "card_id": 54,
+      "col": 0,
+      "dashboard_tab_id": 6,
+      "inline_parameters": [],
+      "parameter_mappings": [
+        {
+          "card_id": 54,
+          "parameter_id": "1d9e4fac",
+          "target": [
+            "dimension",
+            [
+              "field",
+              277,
+              {
+                "base-type": "type/Date"
+              }
+            ],
+            {
+              "stage-number": 0
+            }
+          ]
+        }
+      ],
+      "row": 2,
+      "series": [],
+      "size_x": 12,
+      "size_y": 5,
+      "visualization_settings": {}
+    },
+    {
+      "action_id": null,
+      "card_id": 55,
+      "col": 12,
+      "dashboard_tab_id": 6,
+      "inline_parameters": [],
+      "parameter_mappings": [
+        {
+          "card_id": 55,
+          "parameter_id": "1d9e4fac",
+          "target": [
+            "dimension",
+            [
+              "field",
+              277,
+              {
+                "base-type": "type/Date"
+              }
+            ],
+            {
+              "stage-number": 0
+            }
+          ]
+        }
+      ],
+      "row": 2,
+      "series": [],
+      "size_x": 12,
+      "size_y": 5,
+      "visualization_settings": {}
+    },
+    {
+      "action_id": null,
+      "card_id": 56,
+      "col": 0,
+      "dashboard_tab_id": 6,
+      "inline_parameters": [],
+      "parameter_mappings": [
+        {
+          "card_id": 56,
+          "parameter_id": "1d9e4fac",
+          "target": [
+            "dimension",
+            [
+              "field",
+              277,
+              {
+                "base-type": "type/Date",
+                "join-alias": "Vessel Daily Anomalies - Mmsi"
+              }
+            ],
+            {
+              "stage-number": 0
+            }
+          ]
+        }
+      ],
+      "row": 7,
+      "series": [],
+      "size_x": 24,
+      "size_y": 7,
+      "visualization_settings": {}
     }
   ],
   "description": null,
@@ -350,17 +1162,17 @@
     },
     {
       "default": [
-        "2026-09-01T00:00:00Z"
+        "2026-09-24T00:00:00Z"
       ],
       "filteringParameters": [
         "f247577e"
       ],
       "id": "32760e99",
       "isMultiSelect": false,
-      "name": "Date",
+      "name": "Run ID",
       "required": true,
       "sectionId": "string",
-      "slug": "date",
+      "slug": "run_id",
       "type": "string/="
     },
     {
@@ -369,8 +1181,82 @@
       "sectionId": "number",
       "slug": "community_id",
       "type": "number/="
+    },
+    {
+      "default": "past1days",
+      "id": "afd55c8c",
+      "name": "Last Seen",
+      "required": true,
+      "sectionId": "date",
+      "slug": "last_seen",
+      "type": "date/relative"
+    },
+    {
+      "id": "a5a32147",
+      "name": "Vessel name",
+      "sectionId": "string",
+      "slug": "vessel_name",
+      "type": "string/contains"
+    },
+    {
+      "id": "a0d1a8c3",
+      "name": "Ship Category",
+      "sectionId": "string",
+      "slug": "ship_category",
+      "type": "string/="
+    },
+    {
+      "id": "9954d772",
+      "name": "Navigational Status",
+      "sectionId": "string",
+      "slug": "navigational_status",
+      "type": "string/="
+    },
+    {
+      "id": "968d076d",
+      "name": "Ship Type",
+      "sectionId": "string",
+      "slug": "ship_type",
+      "type": "string/="
+    },
+    {
+      "default": "2026-09-28",
+      "id": "1d9e4fac",
+      "name": "Date",
+      "required": true,
+      "sectionId": "date",
+      "slug": "date",
+      "type": "date/single"
     }
   ],
-  "tabs": [],
+  "tabs": [
+    {
+      "created_at": "2026-09-26T09:08:31.561033Z",
+      "dashboard_id": 2,
+      "entity_id": "ieUHc-zYRd3Nauqx56XDM",
+      "id": 4,
+      "name": "Ports",
+      "position": 0,
+      "updated_at": "2026-09-26T09:08:31.561033Z"
+    },
+    {
+      "created_at": "2026-09-26T09:08:31.561033Z",
+      "dashboard_id": 2,
+      "entity_id": "KwwkkhYCCbL-SWAmpF5ot",
+      "id": 5,
+      "name": "Vessels",
+      "position": 1,
+      "updated_at": "2026-09-26T09:08:31.561033Z"
+    },
+    {
+      "created_at": "2026-09-29T10:40:11.338691Z",
+      "dashboard_id": 2,
+      "entity_id": "sEKyPRKH2IbG5oHfTuVrA",
+      "id": 6,
+      "name": "Anomalies & AI Insights",
+      "position": 2,
+      "updated_at": "2026-09-29T10:40:11.338691Z"
+    }
+  ],
   "width": "full"
 }

@@ -1,0 +1,40 @@
+{
+  "cache_ttl": null,
+  "dataset_query": {
+    "database": 2,
+    "lib/type": "mbql/query",
+    "stages": [
+      {
+        "aggregation": [
+          [
+            "avg",
+            {
+              "lib/uuid": "416f1e8c-689e-4fa3-bbe0-17f939ff9244"
+            },
+            [
+              "field",
+              {
+                "base-type": "type/Float",
+                "effective-type": "type/Float",
+                "lib/uuid": "e7b2a305-21d8-46dd-bd53-e75f327d0435"
+              },
+              303
+            ]
+          ]
+        ],
+        "lib/type": "mbql.stage/mbql",
+        "source-table": 25
+      }
+    ]
+  },
+  "description": "Relative deterministic severity based on deviations from the vessel’s recent behavioral baseline. It is not a probability.",
+  "display": "scalar",
+  "id": 53,
+  "name": "Average anomaly severity",
+  "parameter_mappings": [],
+  "parameters": [],
+  "type": "question",
+  "visualization_settings": {
+    "scalar.segments": []
+  }
+}

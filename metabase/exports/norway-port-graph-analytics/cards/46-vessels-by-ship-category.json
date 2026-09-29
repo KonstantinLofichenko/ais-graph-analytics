@@ -1,0 +1,84 @@
+{
+  "cache_ttl": null,
+  "dataset_query": {
+    "database": 2,
+    "lib/type": "mbql/query",
+    "stages": [
+      {
+        "aggregation": [
+          [
+            "count",
+            {
+              "lib/uuid": "91a8361f-0e82-488e-8b81-fefd805e28a1"
+            }
+          ]
+        ],
+        "breakout": [
+          [
+            "field",
+            {
+              "base-type": "type/Text",
+              "effective-type": "type/Text",
+              "lib/uuid": "ad343ba4-c472-4d14-a253-7536897f846c"
+            },
+            192
+          ]
+        ],
+        "filters": [
+          [
+            "=",
+            {
+              "lib/uuid": "4073f1a2-4e84-4b71-973e-6a804ebfe1e4"
+            },
+            [
+              "field",
+              {
+                "base-type": "type/Integer",
+                "effective-type": "type/Integer",
+                "lib/uuid": "1909f40c-e893-41fe-b323-ff42bbb6bfac"
+              },
+              206
+            ],
+            1
+          ]
+        ],
+        "lib/type": "mbql.stage/mbql",
+        "order-by": [
+          [
+            "desc",
+            {
+              "lib/uuid": "4374a583-083c-4623-a4f7-648ec9147936"
+            },
+            [
+              "aggregation",
+              {
+                "base-type": "type/Integer",
+                "effective-type": "type/Integer",
+                "lib/source-name": "count",
+                "lib/uuid": "b825a847-e804-4d28-a8e4-63a4b51cbb63"
+              },
+              "91a8361f-0e82-488e-8b81-fefd805e28a1"
+            ]
+          ]
+        ],
+        "source-table": 18
+      }
+    ]
+  },
+  "description": null,
+  "display": "bar",
+  "id": 46,
+  "name": "Vessels by Ship Category",
+  "parameter_mappings": [],
+  "parameters": [],
+  "type": "question",
+  "visualization_settings": {
+    "graph.dimensions": [
+      "ship_category"
+    ],
+    "graph.metrics": [
+      "count"
+    ],
+    "graph.x_axis.scale": "ordinal"
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "cache_ttl": null,
+  "dataset_query": {
+    "database": 2,
+    "lib/type": "mbql/query",
+    "stages": [
+      {
+        "aggregation": [
+          [
+            "count",
+            {
+              "lib/uuid": "eeeb1966-7581-48cd-978f-2d53c15947ee"
+            }
+          ]
+        ],
+        "lib/type": "mbql.stage/mbql",
+        "source-table": 25
+      }
+    ]
+  },
+  "description": null,
+  "display": "scalar",
+  "id": 50,
+  "name": "Anomaly vessel days",
+  "parameter_mappings": [],
+  "parameters": [],
+  "type": "question",
+  "visualization_settings": {
+    "scalar.segments": []
+  }
+}

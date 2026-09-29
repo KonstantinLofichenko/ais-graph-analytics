@@ -1,0 +1,157 @@
+{
+  "cache_ttl": null,
+  "dataset_query": {
+    "database": 2,
+    "lib/type": "mbql/query",
+    "stages": [
+      {
+        "breakout": [
+          [
+            "field",
+            {
+              "base-type": "type/Integer",
+              "effective-type": "type/Integer",
+              "lib/uuid": "693398f2-4b71-4d37-bb4b-e9d391e1eeba"
+            },
+            158
+          ],
+          [
+            "field",
+            {
+              "base-type": "type/Text",
+              "effective-type": "type/Text",
+              "lib/uuid": "5e598914-33a4-4c1f-a0c9-aeff7e84d940"
+            },
+            159
+          ],
+          [
+            "field",
+            {
+              "base-type": "type/Text",
+              "effective-type": "type/Text",
+              "lib/uuid": "4b4c73ae-4b20-4419-89f6-caada11f6ba1"
+            },
+            192
+          ],
+          [
+            "field",
+            {
+              "base-type": "type/Text",
+              "effective-type": "type/Text",
+              "lib/uuid": "ed926ddd-eb9c-4bb4-a8f8-b07df28d50ae"
+            },
+            191
+          ],
+          [
+            "field",
+            {
+              "base-type": "type/Text",
+              "effective-type": "type/Text",
+              "lib/uuid": "3d629d42-a0c5-4057-8c8e-34aa63606c28"
+            },
+            202
+          ],
+          [
+            "field",
+            {
+              "base-type": "type/Float",
+              "effective-type": "type/Float",
+              "lib/uuid": "b754bd42-6e5e-47da-a698-31f51af23612"
+            },
+            198
+          ],
+          [
+            "field",
+            {
+              "base-type": "type/DateTimeWithLocalTZ",
+              "effective-type": "type/DateTimeWithLocalTZ",
+              "lib/uuid": "f1789d49-1466-4e95-8684-bacab0bd733e",
+              "temporal-unit": "minute"
+            },
+            162
+          ],
+          [
+            "field",
+            {
+              "base-type": "type/Float",
+              "effective-type": "type/Float",
+              "lib/uuid": "6831d026-545f-4c87-ba40-c0253f0dd509"
+            },
+            196
+          ],
+          [
+            "field",
+            {
+              "base-type": "type/Float",
+              "effective-type": "type/Float",
+              "lib/uuid": "5e6f1748-8698-4010-966a-ae9951298e7a"
+            },
+            197
+          ]
+        ],
+        "filters": [
+          [
+            "=",
+            {
+              "lib/uuid": "37c4ee9d-d3dd-4aa4-9422-8000c4ff7e72"
+            },
+            [
+              "field",
+              {
+                "base-type": "type/Integer",
+                "effective-type": "type/Integer",
+                "lib/uuid": "2264562d-2c78-4c3c-9f6a-066d9869f315"
+              },
+              206
+            ],
+            1
+          ],
+          [
+            "between",
+            {
+              "lib/uuid": "64c089f2-bcc0-4c0d-aa00-fcdc595c0229"
+            },
+            [
+              "field",
+              {
+                "base-type": "type/Float",
+                "effective-type": "type/Float",
+                "lib/uuid": "3596d1bd-a885-4a36-9cee-da495dd43d9c"
+              },
+              196
+            ],
+            -90,
+            90
+          ],
+          [
+            "between",
+            {
+              "lib/uuid": "cce94264-f205-4379-9531-9563a0c2b4d0"
+            },
+            [
+              "field",
+              {
+                "base-type": "type/Float",
+                "effective-type": "type/Float",
+                "lib/uuid": "eaf85dd2-ef4d-4b65-9ecf-74112a820354"
+              },
+              197
+            ],
+            -180,
+            180
+          ]
+        ],
+        "lib/type": "mbql.stage/mbql",
+        "source-table": 18
+      }
+    ]
+  },
+  "description": null,
+  "display": "map",
+  "id": 48,
+  "name": "Last Known Vessel Positions",
+  "parameter_mappings": [],
+  "parameters": [],
+  "type": "question",
+  "visualization_settings": {}
+}

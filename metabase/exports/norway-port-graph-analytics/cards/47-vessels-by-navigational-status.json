@@ -1,0 +1,84 @@
+{
+  "cache_ttl": null,
+  "dataset_query": {
+    "database": 2,
+    "lib/type": "mbql/query",
+    "stages": [
+      {
+        "aggregation": [
+          [
+            "count",
+            {
+              "lib/uuid": "cd5f34f2-db06-4ad4-a542-f51fd32de485"
+            }
+          ]
+        ],
+        "breakout": [
+          [
+            "field",
+            {
+              "base-type": "type/Text",
+              "effective-type": "type/Text",
+              "lib/uuid": "91344200-7745-4e9e-b92e-e8659fe1e2be"
+            },
+            202
+          ]
+        ],
+        "filters": [
+          [
+            "=",
+            {
+              "lib/uuid": "ebd5572f-0c7d-418c-ae82-cf100bb7f6cd"
+            },
+            [
+              "field",
+              {
+                "base-type": "type/Integer",
+                "effective-type": "type/Integer",
+                "lib/uuid": "9c72fd3d-1d81-4f4b-9691-f84231cc640d"
+              },
+              206
+            ],
+            1
+          ]
+        ],
+        "lib/type": "mbql.stage/mbql",
+        "order-by": [
+          [
+            "desc",
+            {
+              "lib/uuid": "67a1ebc4-d325-49ac-b1d3-4e04ee819049"
+            },
+            [
+              "aggregation",
+              {
+                "base-type": "type/Integer",
+                "effective-type": "type/Integer",
+                "lib/source-name": "count",
+                "lib/uuid": "4d32b5eb-27b7-43e1-94b1-01858a15f9d8"
+              },
+              "cd5f34f2-db06-4ad4-a542-f51fd32de485"
+            ]
+          ]
+        ],
+        "source-table": 18
+      }
+    ]
+  },
+  "description": null,
+  "display": "bar",
+  "id": 47,
+  "name": "Vessels by Navigational Status",
+  "parameter_mappings": [],
+  "parameters": [],
+  "type": "question",
+  "visualization_settings": {
+    "graph.dimensions": [
+      "last_navigational_status_name"
+    ],
+    "graph.metrics": [
+      "count"
+    ],
+    "graph.x_axis.scale": "ordinal"
+  }
+}

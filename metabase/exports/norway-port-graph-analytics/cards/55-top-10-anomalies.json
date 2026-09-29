@@ -1,0 +1,171 @@
+{
+  "cache_ttl": null,
+  "dataset_query": {
+    "database": 2,
+    "lib/type": "mbql/query",
+    "stages": [
+      {
+        "breakout": [
+          [
+            "field",
+            {
+              "base-type": "type/Integer",
+              "effective-type": "type/Integer",
+              "lib/uuid": "b0b0c308-db03-47f3-82fb-e443a613f830"
+            },
+            304
+          ],
+          [
+            "field",
+            {
+              "base-type": "type/Text",
+              "effective-type": "type/Text",
+              "lib/uuid": "20c22feb-1dbb-462c-bd2d-d2bbc5fa4a70"
+            },
+            278
+          ],
+          [
+            "field",
+            {
+              "base-type": "type/Text",
+              "effective-type": "type/Text",
+              "lib/uuid": "debd2a6d-6413-4d10-97f3-53d4cd56e71f"
+            },
+            280
+          ],
+          [
+            "expression",
+            {
+              "base-type": "type/Text",
+              "effective-type": "type/Text",
+              "lib/uuid": "5aa38851-0dd0-460e-9550-b84496cd60ec"
+            },
+            "Anomaly Reason"
+          ],
+          [
+            "field",
+            {
+              "base-type": "type/Float",
+              "effective-type": "type/Float",
+              "lib/uuid": "d0007547-57af-4314-9bf7-69251abfcaa6"
+            },
+            303
+          ]
+        ],
+        "expressions": [
+          [
+            "case",
+            {
+              "lib/expression-name": "Anomaly Reason",
+              "lib/uuid": "34c1c4f4-114b-401b-927e-204ea13cc521"
+            },
+            [
+              [
+                [
+                  "=",
+                  {
+                    "lib/uuid": "2b646ba3-2f43-495b-b713-026310e8f080"
+                  },
+                  [
+                    "field",
+                    {
+                      "base-type": "type/Text",
+                      "effective-type": "type/Text",
+                      "lib/uuid": "445d3553-5cce-4f1c-ad0c-32e2dd7ecc36"
+                    },
+                    302
+                  ],
+                  "speed_and_stationary"
+                ],
+                "Speed + Stationary"
+              ],
+              [
+                [
+                  "=",
+                  {
+                    "lib/uuid": "d5462742-93d3-44fb-bf47-6142d23ef6c7"
+                  },
+                  [
+                    "field",
+                    {
+                      "base-type": "type/Text",
+                      "effective-type": "type/Text",
+                      "lib/uuid": "877f5453-2dea-49f1-9af8-4548cfc9f2b3"
+                    },
+                    302
+                  ],
+                  "stationary"
+                ],
+                "Stationary"
+              ],
+              [
+                [
+                  "=",
+                  {
+                    "lib/uuid": "f4de6aa0-2fd8-4d34-8afe-10b41b2292a8"
+                  },
+                  [
+                    "field",
+                    {
+                      "base-type": "type/Text",
+                      "effective-type": "type/Text",
+                      "lib/uuid": "384affe9-d2bf-442c-b17a-3df51935f928"
+                    },
+                    302
+                  ],
+                  "speed"
+                ],
+                "Speed"
+              ]
+            ],
+            [
+              "field",
+              {
+                "base-type": "type/Text",
+                "effective-type": "type/Text",
+                "lib/uuid": "53705324-76cc-4cbc-9334-aa78dbe09ec1"
+              },
+              302
+            ]
+          ]
+        ],
+        "lib/type": "mbql.stage/mbql",
+        "limit": 10,
+        "order-by": [
+          [
+            "asc",
+            {
+              "lib/uuid": "eed3facc-c7eb-4c30-9267-240a29bb61b9"
+            },
+            [
+              "field",
+              {
+                "base-type": "type/Integer",
+                "effective-type": "type/Integer",
+                "lib/uuid": "093ae2d7-6a80-45d2-a383-5039c9248b88"
+              },
+              304
+            ]
+          ]
+        ],
+        "source-table": 25
+      }
+    ]
+  },
+  "description": null,
+  "display": "table",
+  "id": 55,
+  "name": "Top 10 Anomalies",
+  "parameter_mappings": [],
+  "parameters": [],
+  "type": "question",
+  "visualization_settings": {
+    "column_settings": {
+      "[\"name\",\"anomaly_score\"]": {
+        "decimals": 2
+      }
+    },
+    "table.cell_column": "anomaly_score",
+    "table.pivot_column": "anomaly_rank"
+  }
+}

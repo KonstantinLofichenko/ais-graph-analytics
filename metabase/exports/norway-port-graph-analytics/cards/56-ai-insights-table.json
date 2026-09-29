@@ -1,0 +1,530 @@
+{
+  "cache_ttl": null,
+  "dataset_query": {
+    "database": 2,
+    "lib/type": "mbql/query",
+    "stages": [
+      {
+        "breakout": [
+          [
+            "field",
+            {
+              "base-type": "type/Integer",
+              "effective-type": "type/Integer",
+              "join-alias": "Vessel Daily Anomalies - Mmsi",
+              "lib/uuid": "25d6a107-1e90-47da-8ac4-2cd252498a0a"
+            },
+            304
+          ],
+          [
+            "field",
+            {
+              "base-type": "type/Integer",
+              "effective-type": "type/Integer",
+              "lib/uuid": "ebd78676-7ebe-4dad-89ce-a0b568c4e207"
+            },
+            244
+          ],
+          [
+            "field",
+            {
+              "base-type": "type/Text",
+              "effective-type": "type/Text",
+              "lib/uuid": "45c17a8c-23ad-4d3f-b0a1-134434dc1be2"
+            },
+            246
+          ],
+          [
+            "field",
+            {
+              "base-type": "type/Text",
+              "effective-type": "type/Text",
+              "lib/uuid": "0f3a7dd1-a005-4a33-ab38-7252c1f7188f"
+            },
+            248
+          ],
+          [
+            "field",
+            {
+              "base-type": "type/Float",
+              "effective-type": "type/Float",
+              "join-alias": "Vessel Daily Anomalies - Mmsi",
+              "lib/uuid": "7e58aea6-9c0f-447f-bb5e-4ecd0668e9e9"
+            },
+            303
+          ],
+          [
+            "expression",
+            {
+              "base-type": "type/Text",
+              "effective-type": "type/Text",
+              "lib/uuid": "8118e166-e8ad-4f2f-936b-5cedb24145a3"
+            },
+            "Anomaly Reason"
+          ],
+          [
+            "expression",
+            {
+              "base-type": "type/Text",
+              "effective-type": "type/Text",
+              "lib/uuid": "41099f46-fae6-4646-8355-ffa1d39d7030"
+            },
+            "Activity Class"
+          ],
+          [
+            "field",
+            {
+              "base-type": "type/Float",
+              "effective-type": "type/Float",
+              "lib/uuid": "56f1a24c-5cb8-4055-ba7a-3b90ed34cf94"
+            },
+            255
+          ],
+          [
+            "field",
+            {
+              "base-type": "type/Float",
+              "effective-type": "type/Float",
+              "join-alias": "Vessel Daily Anomalies - Mmsi",
+              "lib/uuid": "c0ae29fb-5d11-4e55-a4b6-01b9e7d4f196"
+            },
+            295
+          ],
+          [
+            "field",
+            {
+              "base-type": "type/Text",
+              "effective-type": "type/Text",
+              "lib/uuid": "349d5474-54f7-45e9-a593-247836bd7c86"
+            },
+            264
+          ],
+          [
+            "field",
+            {
+              "base-type": "type/Text",
+              "effective-type": "type/Text",
+              "lib/uuid": "57f1ebd0-be9c-479c-95b0-8e9e318ba2f1"
+            },
+            265
+          ],
+          [
+            "field",
+            {
+              "base-type": "type/Text",
+              "effective-type": "type/Text",
+              "lib/uuid": "70c3f146-93c5-4260-aad4-018f07990f54"
+            },
+            266
+          ],
+          [
+            "field",
+            {
+              "base-type": "type/Text",
+              "effective-type": "type/Text",
+              "lib/uuid": "15abe9c5-d2b3-49ca-bad6-d4f9eb600749"
+            },
+            267
+          ],
+          [
+            "field",
+            {
+              "base-type": "type/Float",
+              "effective-type": "type/Float",
+              "lib/uuid": "b2d871b3-ae5c-46c7-aa48-3dcbc2048e15"
+            },
+            253
+          ],
+          [
+            "field",
+            {
+              "base-type": "type/Float",
+              "effective-type": "type/Float",
+              "join-alias": "Vessel Daily Anomalies - Mmsi",
+              "lib/uuid": "15027f43-41b3-41c4-af55-d2783c733225"
+            },
+            290
+          ]
+        ],
+        "expressions": [
+          [
+            "case",
+            {
+              "lib/expression-name": "Anomaly Reason",
+              "lib/uuid": "65fda29f-1e22-4a09-90a1-f2bc84fa31e2"
+            },
+            [
+              [
+                [
+                  "=",
+                  {
+                    "lib/uuid": "56823c39-0f06-49d2-8a69-d396018217b8"
+                  },
+                  [
+                    "field",
+                    {
+                      "base-type": "type/Text",
+                      "effective-type": "type/Text",
+                      "join-alias": "Vessel Daily Anomalies - Mmsi",
+                      "lib/uuid": "c8c8d6ce-0e60-4015-a9c6-955f04cbfe7b"
+                    },
+                    302
+                  ],
+                  "speed_and_stationary"
+                ],
+                "Speed + Stationary"
+              ],
+              [
+                [
+                  "=",
+                  {
+                    "lib/uuid": "e4d93633-2b86-4eee-8943-f7ffdc1ea362"
+                  },
+                  [
+                    "field",
+                    {
+                      "base-type": "type/Text",
+                      "effective-type": "type/Text",
+                      "join-alias": "Vessel Daily Anomalies - Mmsi",
+                      "lib/uuid": "83e6cb61-f60d-4a99-80f8-325b6e4ef8c8"
+                    },
+                    302
+                  ],
+                  "stationary"
+                ],
+                "Stationary"
+              ],
+              [
+                [
+                  "=",
+                  {
+                    "lib/uuid": "82173819-9d4a-4c43-98d7-938eed9e1281"
+                  },
+                  [
+                    "field",
+                    {
+                      "base-type": "type/Text",
+                      "effective-type": "type/Text",
+                      "join-alias": "Vessel Daily Anomalies - Mmsi",
+                      "lib/uuid": "152faa6b-db3b-41f1-9c76-7eefa9acc723"
+                    },
+                    302
+                  ],
+                  "speed"
+                ],
+                "Speed"
+              ]
+            ],
+            [
+              "field",
+              {
+                "base-type": "type/Text",
+                "effective-type": "type/Text",
+                "join-alias": "Vessel Daily Anomalies - Mmsi",
+                "lib/uuid": "920d6cc1-0f88-462e-84dc-b89a4deeda24"
+              },
+              302
+            ]
+          ],
+          [
+            "case",
+            {
+              "lib/expression-name": "Activity Class",
+              "lib/uuid": "7d24228e-43ec-4c2d-83e4-e906216f22ef"
+            },
+            [
+              [
+                [
+                  "=",
+                  {
+                    "lib/uuid": "afdffaa5-f84c-4ac4-b53c-96af50976aee"
+                  },
+                  [
+                    "field",
+                    {
+                      "base-type": "type/Text",
+                      "effective-type": "type/Text",
+                      "lib/uuid": "c7bacf12-cf1e-4c0c-affa-00ad3983dfd7"
+                    },
+                    263
+                  ],
+                  "mostly_stationary"
+                ],
+                "Mostly Stationary"
+              ],
+              [
+                [
+                  "=",
+                  {
+                    "lib/uuid": "5029233b-a8b9-457a-b275-eb8c02182a5d"
+                  },
+                  [
+                    "field",
+                    {
+                      "base-type": "type/Text",
+                      "effective-type": "type/Text",
+                      "lib/uuid": "ef2ef334-11ab-47dc-a391-161996455270"
+                    },
+                    263
+                  ],
+                  "continuous_movement"
+                ],
+                "Continuous Movement"
+              ],
+              [
+                [
+                  "=",
+                  {
+                    "lib/uuid": "cc524b8d-a2ed-43b6-85a5-45fd2003a9a9"
+                  },
+                  [
+                    "field",
+                    {
+                      "base-type": "type/Text",
+                      "effective-type": "type/Text",
+                      "lib/uuid": "f43c8eba-1c0d-4a8c-b3df-499bdaa1848c"
+                    },
+                    263
+                  ],
+                  "mixed_activity"
+                ],
+                "Mixed Activity"
+              ],
+              [
+                [
+                  "=",
+                  {
+                    "lib/uuid": "31505212-705e-4511-93bb-b4462f481355"
+                  },
+                  [
+                    "field",
+                    {
+                      "base-type": "type/Text",
+                      "effective-type": "type/Text",
+                      "lib/uuid": "ad9ba5ba-df2c-451b-b6ed-706c22d6b7c0"
+                    },
+                    263
+                  ],
+                  "insufficient_data"
+                ],
+                "Insufficient Data"
+              ]
+            ],
+            [
+              "field",
+              {
+                "base-type": "type/Text",
+                "effective-type": "type/Text",
+                "lib/uuid": "61a65563-a8a1-49c1-8513-4b66fbf291c0"
+              },
+              263
+            ]
+          ]
+        ],
+        "filters": [
+          [
+            "=",
+            {
+              "lib/uuid": "419d475e-c185-4c68-a9f9-33e915630142"
+            },
+            [
+              "field",
+              {
+                "base-type": "type/Integer",
+                "effective-type": "type/Integer",
+                "lib/uuid": "222ab01e-cded-4cec-83b4-4084f35899cc"
+              },
+              275
+            ],
+            1
+          ]
+        ],
+        "joins": [
+          {
+            "alias": "Vessel Daily Anomalies - Mmsi",
+            "conditions": [
+              [
+                "=",
+                {
+                  "lib/uuid": "5fca493b-9215-4070-8f55-223fa4f0c919"
+                },
+                [
+                  "field",
+                  {
+                    "base-type": "type/Integer",
+                    "effective-type": "type/Integer",
+                    "lib/uuid": "4d2c72c4-0121-42f2-80f3-dc79b27ef722"
+                  },
+                  244
+                ],
+                [
+                  "field",
+                  {
+                    "base-type": "type/Integer",
+                    "effective-type": "type/Integer",
+                    "join-alias": "Vessel Daily Anomalies - Mmsi",
+                    "lib/uuid": "716bf093-bbaa-4601-aa29-f106786e6673"
+                  },
+                  276
+                ]
+              ],
+              [
+                "=",
+                {
+                  "lib/uuid": "05f2ccaa-8936-4eb3-8d6e-9e846b1bacfd"
+                },
+                [
+                  "field",
+                  {
+                    "base-type": "type/Date",
+                    "effective-type": "type/Date",
+                    "lib/uuid": "c30ba792-46bd-42f2-a788-dee431871c05",
+                    "temporal-unit": "day"
+                  },
+                  245
+                ],
+                [
+                  "field",
+                  {
+                    "base-type": "type/Date",
+                    "effective-type": "type/Date",
+                    "join-alias": "Vessel Daily Anomalies - Mmsi",
+                    "lib/uuid": "44289562-1ee2-437a-818f-edeb95fbd821",
+                    "temporal-unit": "day"
+                  },
+                  277
+                ]
+              ]
+            ],
+            "fields": "all",
+            "lib/type": "mbql/join",
+            "stages": [
+              {
+                "lib/type": "mbql.stage/mbql",
+                "source-table": 25
+              }
+            ],
+            "strategy": "left-join"
+          }
+        ],
+        "lib/type": "mbql.stage/mbql",
+        "limit": 100,
+        "order-by": [
+          [
+            "asc",
+            {
+              "lib/uuid": "21657962-8958-4a17-b453-4f8f588c6655"
+            },
+            [
+              "field",
+              {
+                "base-type": "type/Integer",
+                "effective-type": "type/Integer",
+                "join-alias": "Vessel Daily Anomalies - Mmsi",
+                "lib/uuid": "80bb0e2c-654c-4fc2-8bf8-c4a491ea8a20"
+              },
+              304
+            ]
+          ]
+        ],
+        "source-table": 24
+      }
+    ]
+  },
+  "description": null,
+  "display": "table",
+  "id": 56,
+  "name": "AI Insights table",
+  "parameter_mappings": [],
+  "parameters": [],
+  "type": "question",
+  "visualization_settings": {
+    "column_settings": {
+      "[\"name\",\"anomaly_rank\"]": {
+        "column_title": "Anomaly Rank"
+      },
+      "[\"name\",\"anomaly_score\"]": {
+        "column_title": "Anomaly Score",
+        "decimals": 2
+      },
+      "[\"name\",\"avg_speed_kn\"]": {
+        "decimals": 2
+      },
+      "[\"name\",\"baseline_avg_speed_kn\"]": {
+        "column_title": "Baseline Avg Speed Kn",
+        "decimals": 2
+      },
+      "[\"name\",\"baseline_stationary_pct\"]": {
+        "column_title": "Baseline Stationary Pct",
+        "decimals": 2
+      },
+      "[\"name\",\"stationary_observation_pct\"]": {
+        "decimals": 2
+      }
+    },
+    "table.cell_column": "ai_data_quality_note",
+    "table.columns": [
+      {
+        "enabled": true,
+        "name": "anomaly_rank"
+      },
+      {
+        "enabled": true,
+        "name": "vessel_name"
+      },
+      {
+        "enabled": true,
+        "name": "ship_category"
+      },
+      {
+        "enabled": true,
+        "name": "anomaly_score"
+      },
+      {
+        "enabled": true,
+        "name": "Anomaly Reason"
+      },
+      {
+        "enabled": true,
+        "name": "Activity Class"
+      },
+      {
+        "enabled": true,
+        "name": "ai_summary"
+      },
+      {
+        "enabled": true,
+        "name": "avg_speed_kn"
+      },
+      {
+        "enabled": true,
+        "name": "baseline_avg_speed_kn"
+      },
+      {
+        "enabled": true,
+        "name": "stationary_observation_pct"
+      },
+      {
+        "enabled": true,
+        "name": "baseline_stationary_pct"
+      },
+      {
+        "enabled": true,
+        "name": "navigation_status_quality"
+      },
+      {
+        "enabled": true,
+        "name": "ai_notable_behavior"
+      },
+      {
+        "enabled": true,
+        "name": "ai_data_quality_note"
+      },
+      {
+        "enabled": true,
+        "name": "mmsi"
+      }
+    ],
+    "table.pivot_column": "anomaly_rank"
+  }
+}

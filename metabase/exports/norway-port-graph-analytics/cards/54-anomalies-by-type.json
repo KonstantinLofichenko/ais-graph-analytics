@@ -1,0 +1,149 @@
+{
+  "cache_ttl": null,
+  "dataset_query": {
+    "database": 2,
+    "lib/type": "mbql/query",
+    "stages": [
+      {
+        "aggregation": [
+          [
+            "count",
+            {
+              "lib/uuid": "190862d6-3859-4321-9624-2f9d42bb7f72"
+            }
+          ]
+        ],
+        "breakout": [
+          [
+            "expression",
+            {
+              "base-type": "type/Text",
+              "effective-type": "type/Text",
+              "lib/uuid": "5541e67d-f81a-4eb6-969f-ad391e4924b7"
+            },
+            "Anomaly Reason"
+          ]
+        ],
+        "expressions": [
+          [
+            "case",
+            {
+              "lib/expression-name": "Anomaly Reason",
+              "lib/uuid": "b9a843f3-decb-4abd-8dc7-932765c38997"
+            },
+            [
+              [
+                [
+                  "=",
+                  {
+                    "lib/uuid": "f22e95fd-5108-4744-83c9-ae9dff91536a"
+                  },
+                  [
+                    "field",
+                    {
+                      "base-type": "type/Text",
+                      "effective-type": "type/Text",
+                      "lib/uuid": "6d9852ac-723b-4265-bd4e-7c863b024edf"
+                    },
+                    302
+                  ],
+                  "speed_and_stationary"
+                ],
+                "Speed + Stationary"
+              ],
+              [
+                [
+                  "=",
+                  {
+                    "lib/uuid": "570f818b-5ce5-469e-aae5-79321027ae24"
+                  },
+                  [
+                    "field",
+                    {
+                      "base-type": "type/Text",
+                      "effective-type": "type/Text",
+                      "lib/uuid": "a3825d1f-cd20-4ffc-a121-8c9b2fe12060"
+                    },
+                    302
+                  ],
+                  "stationary"
+                ],
+                "Stationary"
+              ],
+              [
+                [
+                  "=",
+                  {
+                    "lib/uuid": "d813f753-7449-416f-a717-41f98a8a7a0f"
+                  },
+                  [
+                    "field",
+                    {
+                      "base-type": "type/Text",
+                      "effective-type": "type/Text",
+                      "lib/uuid": "c9311396-fc56-4ee4-9e7f-ae4881e2737e"
+                    },
+                    302
+                  ],
+                  "speed"
+                ],
+                "Speed"
+              ]
+            ],
+            [
+              "field",
+              {
+                "base-type": "type/Text",
+                "effective-type": "type/Text",
+                "lib/uuid": "a36fede9-b032-4b2e-9b9d-42b7f2932a60"
+              },
+              302
+            ]
+          ]
+        ],
+        "lib/type": "mbql.stage/mbql",
+        "order-by": [
+          [
+            "desc",
+            {
+              "lib/uuid": "2c5c5daa-8b35-4f07-82d4-cb782dad0a59"
+            },
+            [
+              "aggregation",
+              {
+                "base-type": "type/Integer",
+                "effective-type": "type/Integer",
+                "lib/source-name": "count",
+                "lib/uuid": "cdbed1a0-28fa-45f7-a650-6bc28e5c728b"
+              },
+              "190862d6-3859-4321-9624-2f9d42bb7f72"
+            ]
+          ]
+        ],
+        "source-table": 25
+      }
+    ]
+  },
+  "description": null,
+  "display": "bar",
+  "id": 54,
+  "name": "Anomalies by Type",
+  "parameter_mappings": [],
+  "parameters": [],
+  "type": "question",
+  "visualization_settings": {
+    "graph.dimensions": [
+      "Anomaly Reason"
+    ],
+    "graph.metrics": [
+      "count"
+    ],
+    "graph.x_axis.scale": "ordinal",
+    "graph.y_axis.title_text": "Vessel days",
+    "series_settings": {
+      "count": {
+        "title": "Vessel days"
+      }
+    }
+  }
+}

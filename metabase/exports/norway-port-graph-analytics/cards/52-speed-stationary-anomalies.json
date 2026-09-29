@@ -1,0 +1,65 @@
+{
+  "cache_ttl": null,
+  "dataset_query": {
+    "database": 2,
+    "lib/type": "mbql/query",
+    "stages": [
+      {
+        "aggregation": [
+          [
+            "count",
+            {
+              "lib/uuid": "b9171955-1a72-4480-91d9-39f7832ce8d3"
+            }
+          ]
+        ],
+        "filters": [
+          [
+            "=",
+            {
+              "lib/uuid": "feda7155-ac2e-4d23-a6f3-abf385f67b1a"
+            },
+            [
+              "field",
+              {
+                "base-type": "type/Integer",
+                "effective-type": "type/Integer",
+                "lib/uuid": "96e515d1-1bbd-4c5b-87cc-01c4ea1d180e"
+              },
+              294
+            ],
+            1
+          ],
+          [
+            "=",
+            {
+              "lib/uuid": "7c6c98a9-7123-4a60-bc51-389bf5794a4e"
+            },
+            [
+              "field",
+              {
+                "base-type": "type/Integer",
+                "effective-type": "type/Integer",
+                "lib/uuid": "cb572478-56c1-41b6-aef9-8204fe7c66ab"
+              },
+              299
+            ],
+            1
+          ]
+        ],
+        "lib/type": "mbql.stage/mbql",
+        "source-table": 25
+      }
+    ]
+  },
+  "description": null,
+  "display": "scalar",
+  "id": 52,
+  "name": "Speed + Stationary anomalies",
+  "parameter_mappings": [],
+  "parameters": [],
+  "type": "question",
+  "visualization_settings": {
+    "scalar.segments": []
+  }
+}

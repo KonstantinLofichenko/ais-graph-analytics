@@ -1,0 +1,49 @@
+{
+  "cache_ttl": null,
+  "dataset_query": {
+    "database": 2,
+    "lib/type": "mbql/query",
+    "stages": [
+      {
+        "aggregation": [
+          [
+            "count",
+            {
+              "lib/uuid": "4105eb2f-f282-4c4b-afdc-7626dbb00ee7"
+            }
+          ]
+        ],
+        "filters": [
+          [
+            "=",
+            {
+              "lib/uuid": "46a0206c-7ac9-4247-a34e-3872ba126697"
+            },
+            [
+              "field",
+              {
+                "base-type": "type/Integer",
+                "effective-type": "type/Integer",
+                "lib/uuid": "feb855e5-c7ec-42c1-af3a-c58c810e79e0"
+              },
+              206
+            ],
+            1
+          ]
+        ],
+        "lib/type": "mbql.stage/mbql",
+        "source-table": 18
+      }
+    ]
+  },
+  "description": null,
+  "display": "scalar",
+  "id": 44,
+  "name": "Total Vessels",
+  "parameter_mappings": [],
+  "parameters": [],
+  "type": "question",
+  "visualization_settings": {
+    "scalar.segments": []
+  }
+}
