@@ -83,20 +83,61 @@ logical result. This can replace canonical records from overlapping live/REST
 sources, including replacing richer name/ship-type values with HAIS NULLs. Review
 overlapping source ranges before loading. The macro has no separate success ledger.
 
-## 5. Downstream models and tests without countries
+## 5. Standalone downstream check without countries
 
 ```sh
 dbt build --project-dir dbt --select +vessels current_port_visits
 ```
 
-This builds `stg_vessels`, `vessels`, and `current_port_visits` and runs the selected
-models' existing tests (currently vessel MMSI uniqueness/non-null tests). No tests
-are currently declared specifically for `stg_hais_positions` or
-`current_port_visits`; build success alone is not a data-quality proof.
-Port visits/GDS/export remain separate Airflow workflows. `current_port_visits`
-can be empty until those port-visit inputs have been generated. dbt does not run
-port detection or GDS, and the canonical-load macro is not automatically invoked
-by `dbt build`.
+This setup/development command builds `stg_vessels`, `vessels`, and
+`current_port_visits` and runs their selected tests. No tests are currently
+declared specifically for `stg_hais_positions` or `current_port_visits`; build
+success alone is not a data-quality proof. `current_port_visits` can be empty
+until port-visit inputs have been generated. dbt does not run port detection or
+GDS, and the canonical-load macro is not automatically invoked by `dbt build`.
+For normal daily processing, use the [Airflow master](../airflow/README.md#consolidated-daily-ais-pipeline),
+which sequences the port-visit, Neo4j GDS, and graph-export child DAGs with the
+dbt and AI tasks.
+
+## Vessel features, anomalies, and AI enrichment
+
+The normal daily path is:
+
+```text
+stg_vessels -> vessels -> vessel_daily_features
+  -> vessel_daily_anomalies -> OpenAI enrichment history
+  -> vessel_daily_enriched
+```
+
+`vessel_daily_features` derives one row per vessel and UTC `activity_date` from
+canonical `raw.ais_positions`, including speed, stationary share, observation
+coverage, and navigational-status measures. The model builds the historical
+relation; the master does not artificially restrict it to the requested day.
+
+`vessel_daily_anomalies` compares sufficiently observed vessel-days (at least
+12 observation hours and 100 AIS points) with the same vessel's eligible days
+from the preceding seven calendar days. Speed and stationary baselines each
+require at least three usable days. A deviation is flagged against the larger
+of a fixed floor or twice the baseline standard deviation. The model also
+records navigation-status quality signals. Its `anomaly_score` sums relative
+speed/stationary deviations and small status-signal increments; it is a
+relative severity score, not a percentage or a 0–100 scale. Anomaly rows are
+ranked within each `activity_date` by score (`anomaly_rank`).
+
+The [AI task](../airflow/README.md#ai-behavior-and-recovery) selects only
+`anomaly_rank <= 100`, strongest first, for the requested `activity_date`.
+Matching model, `vessel_anomaly_v1` prompt version, and input hash are skipped
+before `AI_ENRICHMENT_LIMIT` caps new calls. Successful responses are appended
+to `analytics.vessel_ai_enrichment` with response IDs and token usage. The
+deterministic dbt anomaly calculation does not depend on OpenAI; the later
+`vessel_daily_enriched` mart joins the latest matching AI result to daily
+features and can contain vessel-days without AI content.
+
+For a historical run, trigger `daily_ais_pipeline` with
+`--conf '{"activity_date":"2026-09-27"}'` as shown in the Airflow guide. The
+master pins port visits and AI selection to that UTC day while dbt rebuilds the
+historical models. Run individual dbt commands here for setup, development,
+or diagnosis rather than as a replacement for the master.
 
 ## Optional country enrichment
 

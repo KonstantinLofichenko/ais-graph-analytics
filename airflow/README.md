@@ -63,6 +63,13 @@ resolve_activity_date
 - Anomalies are built before AI; the enriched vessel mart and tests run only after
   AI succeeds. The ordinary dbt/AI tasks retain one retry after five minutes.
 
+The dbt stages produce `analytics.vessel_daily_features`,
+`analytics.vessel_daily_anomalies`, and the final
+`analytics.vessel_daily_enriched` mart. See the
+[vessel model reference](../dbt/README.md#vessel-features-anomalies-and-ai-enrichment)
+for baseline and ranking rules. Metabase uses these outputs in the
+[Anomalies & AI Insights tab](../metabase/README.md#norway-port-graph-analytics).
+
 ### Shared activity date
 
 `resolve_activity_date` validates an explicit `activity_date`, or resolves yesterday
@@ -123,6 +130,10 @@ independent child runs or external graph writers. Valid published empty graph
 snapshots remain supported. No historical ClickHouse data is deleted by the merge.
 
 ## Three tasks
+
+The `ais_port_visits` child DAG is normally triggered by `daily_ais_pipeline`.
+Use the standalone commands in this section for manual runs and diagnosis;
+avoid overlapping them with the master.
 
 DAG: `ais_port_visits` (manual trigger, `schedule=None`, no catchup).
 
@@ -235,6 +246,9 @@ The healthcheck verifies scheduler heartbeat. UI and task success are separate
 checks; a healthy container is not proof that a DAG run succeeded.
 
 ## Run GDS and export graph metrics
+
+The master normally triggers these child DAGs in order. The commands below
+are manual/diagnostic alternatives for an already published graph snapshot.
 
 After connection publishing, manually trigger `ais_gds_metrics` (`schedule=None`,
 no catchup, one active run). Its stages run sequentially:

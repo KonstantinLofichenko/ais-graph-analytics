@@ -1,4 +1,37 @@
-# Metabase dashboard transfer
+# Metabase dashboard and transfer
+
+## Norway Port Graph Analytics
+
+The tracked export in [`exports/norway-port-graph-analytics/`](exports/norway-port-graph-analytics/)
+contains three tabs:
+
+| Tab | Main source and purpose |
+| --- | --- |
+| **Ports** | Country-enriched port graph metrics, PageRank tables, map, and Louvain communities. Requires the separately populated `raw.countries` source and `port_graph_metrics_enriched` dbt view. |
+| **Vessels** | The `vessels` mart: totals, recent activity, categories, navigation status, last-known positions, and details. |
+| **Anomalies & AI Insights** | `vessel_daily_anomalies` and `vessel_daily_enriched` for a selected UTC day. |
+
+The third tab contains **Anomaly Vessel-Days**, **AI-Enriched Anomalies**,
+**Speed + Stationary Anomalies**, **Average Anomaly Severity**, **Anomalies by
+Type**, **Top 10 Anomalies**, and the **AI Insights** table. Its **Date** dashboard
+filter selects `activity_date` across these cards. The AI-Enriched Anomalies KPI
+counts distinct anomaly vessels with `has_ai_enrichment = 1`,
+`ai_prompt_version = 'vessel_anomaly_v1'`, and `anomaly_rank <= 100`.
+Average severity uses the dbt `anomaly_score`, which is not a percentage.
+
+Metabase custom expressions intentionally translate stored technical values
+for display: `speed_and_stationary` becomes **Speed + Stationary**;
+`mostly_stationary`, `continuous_movement`, and `mixed_activity` become
+**Mostly Stationary**, **Continuous Movement**, and **Mixed Activity**. Some
+translations are repeated across cards to demonstrate presentation-layer
+functions; the underlying ClickHouse values remain unchanged.
+
+The current exported dashboard includes fixed historical defaults for **Run ID**
+and **Date**. Review those values and source/filter mappings after import before
+using the dashboard for a different run. The tracked export is a configuration
+snapshot, not a provisioned database or a live screenshot.
+
+## JSON transfer
 
 These scripts export one dashboard and every saved question or model it uses to
 JSON, then recreate them through the Metabase API. They work with the optional
@@ -39,7 +72,7 @@ needed for import and omits creator details, activity history, and hydrated copi
 of saved cards. Export refuses a nonempty directory so old card files cannot enter
 a later import. Review SQL, filters, and embedded values before sharing it.
 
-The reviewed Norway dashboard snapshot is tracked at
+The Norway dashboard snapshot is tracked at
 [`metabase/exports/norway-port-graph-analytics`](exports/norway-port-graph-analytics).
 The default root `metabase_export/` directory is a Git-ignored temporary output;
 it can be removed after the reviewed snapshot is prepared. To refresh the tracked

@@ -1,29 +1,39 @@
 # AIS Graph Analytics
 
-AIS Graph Analytics collects vessel positions through Kafka or HAIS historical
-files, stores canonical AIS observations in ClickHouse, and builds port-visit and
-Neo4j/GDS graph snapshots for analysis with dbt and optional Metabase.
+AIS Graph Analytics collects BarentsWatch live vessel positions and historical
+HAIS files, stores canonical AIS observations in ClickHouse, and builds vessel,
+anomaly, and port-network analytics with dbt, Neo4j GDS, Airflow, and Metabase.
 
 It demonstrates an end-to-end data engineering workflow: live and historical
 ingestion, canonical time-series storage, repeatable Airflow orchestration,
-graph analytics, BI delivery, and automated CI checks.
+graph analytics, bounded AI explanations, BI delivery, and automated CI checks.
 
 ## Project at a glance
 
 ```text
-Live AIS -> Kafka -> Kafka Connect -> Neo4j latest vessel state
-                 \-> ClickHouse canonical position history
+BarentsWatch Live AIS -> Kafka -> Kafka Connect -> Neo4j latest vessel state
+                          \-> ClickHouse Kafka engine -> canonical history
 
 HAIS GeoParquet -> Airflow -> ClickHouse raw layer -> dbt normalization
                                                    \-> canonical position history
 
-Canonical positions -> port visits -> Neo4j port network -> GDS
-    -> ClickHouse metric snapshots -> dbt enrichment -> Metabase
+Canonical ClickHouse positions -> dbt vessels + vessel_daily_features
+    -> vessel_daily_anomalies -> top-100 OpenAI enrichment
+    -> ClickHouse vessel_ai_enrichment history -> dbt vessel_daily_enriched
+    -> Metabase Vessels / Anomalies & AI Insights
+
+Canonical positions -> Airflow port visits -> Neo4j port network -> GDS
+    -> ClickHouse graph snapshots -> dbt port marts -> Metabase Ports
 ```
 
-The analytical workflow infers qualified port stays, publishes consecutive
-observed port movements, calculates weighted PageRank and Louvain communities in
-Neo4j GDS, and exports versioned results back to ClickHouse for Metabase.
+The `daily_ais_pipeline` coordinates dbt preprocessing, port visits, the three
+graph child DAGs, anomaly detection, AI enrichment, the final vessel mart, and
+tests. It defaults to the previous completed UTC day and accepts an explicit
+historical `activity_date`. dbt ranks deterministic vessel-day anomalies; only
+ranks 1–100 are eligible for OpenAI enrichment with prompt version
+`vessel_anomaly_v1`. Neo4j GDS calculates weighted PageRank and Louvain
+communities for the observed port network. The exported Metabase dashboard has
+**Ports**, **Vessels**, and **Anomalies & AI Insights** tabs.
 
 ### Verified portfolio snapshot
 
@@ -172,8 +182,12 @@ docker compose --profile analytics up -d metabase
 
 Open [Metabase](http://localhost:3000), complete its local setup, and add ClickHouse
 using Docker hostname `clickhouse`, port `8123`, and your local credentials.
-Database connections and dashboards are not provisioned by this repository.
-See [Metabase dashboard transfer](metabase/README.md) for JSON export/import scripts.
+Database connections and dashboards are not provisioned automatically. The
+three-tab dashboard has a tracked JSON export; import it after building its
+ClickHouse models. The Ports tab uses the country-enriched port view, which
+requires the separately configured Airbyte country source and optional dbt
+enrichment. Airbyte is not required for the core daily pipeline. See
+[Metabase dashboard transfer](metabase/README.md) for prerequisites and scripts.
 Country-enriched models are optional and require the external source in step 14.
 
 ### 9. Optionally start the continuous producer
@@ -300,6 +314,13 @@ still applies. See [the consolidated stages](airflow/README.md#consolidated-dail
 The master already builds the core vessel models, `current_port_visits`, daily
 anomalies, the AI-enriched vessel mart, and their tests. Do not rerun those setup
 commands after each successful master run.
+
+Specifically, dbt builds `vessel_daily_features` and
+`vessel_daily_anomalies`; OpenAI results are appended to
+`analytics.vessel_ai_enrichment`, and dbt then builds
+`analytics.vessel_daily_enriched`. An explicit `activity_date` pins the graph
+window and AI selection to the same historical UTC day; the dbt models retain
+their full historical relations. See the [vessel model reference](dbt/README.md#vessel-features-anomalies-and-ai-enrichment).
 
 Country enrichment remains optional. After separately provisioning and populating
 `raw.countries` through Airbyte, run:
@@ -647,7 +668,8 @@ Completed and verified:
 
 - live Kafka ingestion into ClickHouse and the latest Vessel state in Neo4j;
 - HAIS ingestion and canonical dbt load;
-- daily port visits, port connections, GDS metrics, export, and Metabase dashboard;
+- combined daily vessel features, anomalies, top-100 AI enrichment, port visits,
+  port connections, GDS metrics, export, and three-tab Metabase dashboard;
 - connector recovery and full Compose stop/start persistence;
 - local unit/dbt validation and the first successful GitHub Actions run;
 - English and Russian portfolio presentations.
