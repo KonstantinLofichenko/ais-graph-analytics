@@ -33,7 +33,7 @@ jobs:
           docker compose --env-file .env.example --profile '*' config --quiet
 
   pipelines:
-    name: Pipeline and Airflow unit tests
+    name: Pipeline tests and consolidated Airflow DAG validation
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -42,11 +42,15 @@ jobs:
           persist-credentials: false
       - name: Build the project Airflow image
         run: docker build --file airflow/Dockerfile --tag ais-airflow-ci .
-      - name: Run isolated pipeline, AI enrichment, and Airflow tests
+      # Includes master discovery, shared dates, child failure propagation, and AI limits.
+      # No scheduler, databases, or OpenAI calls run in CI.
+      - name: Run isolated pipeline, AI enrichment, and merged DAG tests
         run: |
           docker run --rm --network none \
             --volume "$PWD:/workspace:ro" --workdir /workspace \
             --env PYTHONDONTWRITEBYTECODE=1 \
+            --env PYTHON_DOTENV_DISABLED=1 \
+            --env PYTHONPATH=/workspace:/workspace/airflow/dags \
             --env AIRFLOW_HOME=/tmp/airflow-ci \
             --env AIRFLOW__CORE__LOAD_EXAMPLES=false \
             --env AIRFLOW__CORE__DAGS_FOLDER=/tmp/airflow-ci/dags \
@@ -90,3 +94,19 @@ jobs:
         run: |
           cp dbt/profiles.yml.example dbt/profiles.yml
           dbt parse --project-dir dbt --profiles-dir dbt --no-partial-parse
+      - name: Check models required by the consolidated master
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          manifest = json.loads(Path('dbt/target/manifest.json').read_text())
+          required = {
+              'vessels', 'vessel_daily_features', 'current_port_visits',
+              'vessel_daily_anomalies', 'vessel_daily_enriched',
+          }
+          models = {
+              node['name'] for node in manifest['nodes'].values()
+              if node['resource_type'] == 'model'
+          }
+          assert required <= models, f'Missing master DAG models: {required - models}'
+          PY

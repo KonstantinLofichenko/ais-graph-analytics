@@ -66,7 +66,9 @@ container with networking disabled and a read-only checkout.
 
 The pipeline test runner is [scripts/ci-unit-tests.sh](scripts/ci-unit-tests.sh).
 Run it in the Airflow image as shown in the workflow; each suite uses a separate
-Python process. CI excludes the live-database integration check and does not run
+Python process. Its merged-DAG tests verify shared historical/default dates,
+child success gating, and absence of the old master; dbt parsing checks all
+models required by the consolidated DAG. CI excludes the live-database integration check and does not run
 `dbt build`, ingest AIS data, or replace runtime acceptance and backup/restore
 checks. A successful `dbt parse` validates project parsing, not database queries.
 
@@ -265,35 +267,41 @@ coverage before loading. See [load details](dbt/README.md#4-load-a-bounded-range
 
 ### 13. Run daily analytics
 
-Unpause the master and its independently runnable children, then trigger only the
-master for the same canonical date range:
+The consolidated `daily_ais_pipeline` runs dbt preprocessing, the three graph
+stages, anomaly AI enrichment, the final vessel mart, and tests. Configure
+`OPENAI_API_KEY` in the local `.env` before starting/recreating Airflow; AI calls
+use `AI_ENRICHMENT_LIMIT` (default 100) and only anomaly ranks 1–100 are eligible.
+Ensure `analytics.vessel_ai_enrichment` exists; fresh initialization creates it
+via `clickhouse/init/03_vessel_ai_enrichment.sql`.
 
 ```sh
-for dag in ais_port_visits ais_gds_metrics ais_graph_metrics_export ais_analytics_pipeline; do
+for dag in ais_port_visits ais_gds_metrics ais_graph_metrics_export daily_ais_pipeline; do
   docker compose exec -T airflow airflow dags unpause "$dag"
 done
-bash airflow/daily_run.sh 2026-09-01 2026-09-17 5000000
+bash airflow/daily_run.sh 2026-09-01 5000000
 ```
 
-This runs 16 sequential daily chains:
-`ais_port_visits -> ais_gds_metrics -> ais_graph_metrics_export -> next day`.
-Wait for master success before continuing. Each next day waits for the previous
-export; a failure stops advancement. `max_rows` is a per-day safety ceiling, not a
-sampling limit; adjust it to the dataset. The existing run ID is UTC window start,
-e.g. `2026-09-01T00:00:00Z`. Do not run competing graph-changing DAGs in parallel.
+The helper accepts **one** `ACTIVITY_DATE [MAX_ROWS]`. For the September 1–16
+example, repeat it for each day in order, waiting for the complete master to
+succeed before advancing. The former start/end range interface is retired.
+Omit `activity_date` when triggering the DAG directly to select yesterday UTC.
+The master runs daily at **02:00 UTC** (`0 2 * * *`), processing the previous UTC
+day, with catchup disabled. Manual historical triggers remain supported.
+
+Each run captures its date once and waits for graph publication, GDS, and export
+success before proceeding. `max_rows` limits port-visit input size; it is separate
+from the AI call limit. The graph's canonical run ID remains UTC window start,
+e.g. `2026-09-01T00:00:00Z`. Do not run competing graph writers in parallel.
 The [cross-window visit limitation](#known-limitation-port-visits-spanning-processing-window-boundaries)
-still applies. See [orchestration details](airflow/README.md#sequential-daily-analytics).
+still applies. See [the consolidated stages](airflow/README.md#consolidated-daily-ais-pipeline).
 
-### 14. Build dbt models and run tests
+### 14. Optional dbt enrichment
 
-```sh
-dbt build --project-dir dbt --select +vessels current_port_visits
-```
+The master already builds the core vessel models, `current_port_visits`, daily
+anomalies, the AI-enriched vessel mart, and their tests. Do not rerun those setup
+commands after each successful master run.
 
-This builds the selected models and runs their existing tests without country
-data. It does not invoke the canonical-load macro, port detection, or GDS.
-
-**Optional enrichment:** only after separately provisioning and populating
+Country enrichment remains optional. After separately provisioning and populating
 `raw.countries` through Airbyte, run:
 
 ```sh
@@ -301,8 +309,8 @@ dbt build --project-dir dbt --select +countries +port_graph_metrics_enriched
 ```
 
 This creates `analytics.countries` and the enriched graph-metrics view for
-Metabase. The country source and dashboard setup are not reproducible from this
-repo alone. Avoid unqualified `dbt build` until that source exists. See
+Metabase. The country source and dashboard setup are not reproduced by the master.
+Avoid unqualified `dbt build` until that source exists. See
 [Optional Airbyte enrichment](#optional-airbyte-enrichment).
 
 ### 15. Shut down without deleting volumes
@@ -591,8 +599,8 @@ The dependent dbt models are:
   requires the country relation to exist.
 
 **Without Airbyte:** skip the optional country-enrichment command in quickstart
-step 14 and use only its `dbt build --project-dir dbt --select +vessels current_port_visits`
-command. Do not run unqualified `dbt build`, which includes the country-dependent
+step 14. The consolidated master does not select country-dependent models; for
+standalone dbt work use `dbt build --project-dir dbt --select +vessels current_port_visits`. Do not run unqualified `dbt build`, which includes the country-dependent
 models. HAIS ingestion, canonical AIS loading, port visits, GDS, and export to
 `analytics.port_graph_metrics` remain available without country data.
 

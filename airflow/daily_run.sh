@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [[ $# -lt 2 || $# -gt 3 ]]; then
-  echo "Usage: $0 START_DATE END_DATE [MAX_ROWS] (YYYY-MM-DD; start inclusive, end exclusive)" >&2
+if [[ $# -lt 1 || $# -gt 2 ]]; then
+  echo "Usage: $0 ACTIVITY_DATE [MAX_ROWS] (one YYYY-MM-DD UTC day)" >&2
   exit 2
 fi
 
@@ -15,22 +15,19 @@ import re
 import sys
 
 sys.path.insert(0, 'airflow/dags')
-from ais_port_visits_window import parse_date
+from daily_ais_window import resolve_activity_window
 
 try:
-    start = parse_date(sys.argv[1], 'start')
-    end = parse_date(sys.argv[2], 'end')
-    if start >= end:
-        raise ValueError('start must be earlier than end')
-    conf = {'start': sys.argv[1], 'end': sys.argv[2]}
-    if len(sys.argv) == 4:
-        if not re.fullmatch(r'[0-9]+', sys.argv[3]) or int(sys.argv[3]) <= 0:
+    conf = {'activity_date': sys.argv[1]}
+    if len(sys.argv) == 3:
+        if not re.fullmatch(r'[0-9]+', sys.argv[2]):
             raise ValueError('max_rows must be a positive integer')
-        conf['max_rows'] = int(sys.argv[3])
+        conf['max_rows'] = int(sys.argv[2])
+    resolve_activity_window(conf, None)
 except ValueError as error:
     sys.exit(f'Error: {error}')
 print(json.dumps(conf))
 PYTHON
 )
 
-docker compose exec -T airflow airflow dags trigger ais_analytics_pipeline --conf "$conf"
+docker compose exec -T airflow airflow dags trigger daily_ais_pipeline --conf "$conf"

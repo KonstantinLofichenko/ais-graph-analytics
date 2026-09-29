@@ -32,40 +32,95 @@ Compose injects only the database
 credentials and API key required by configured batches. Inside Docker the targets are
 `http://ais-clickhouse:8123` and `bolt://neo4j:7687`.
 
-## Daily dbt and vessel AI pipeline
+## Consolidated daily AIS pipeline
 
-`daily_ais_pipeline` is manually triggered (`schedule=None`), with no catchup and
-one active run:
+`daily_ais_pipeline` is the only daily analytics master. It runs daily at
+**02:00 UTC** (`0 2 * * *`), with no catchup and one active master run.
+The three graph child DAGs remain manual and independently runnable.
+HAIS ingestion and recent historic REST ingestion remain separate workflows.
 
 ```text
-dbt_core -> dbt_vessel_daily_features -> ai_enrichment
+resolve_activity_date
+  -> dbt_core -> dbt_vessel_daily_features
+  -> ais_port_visits -> ais_gds_metrics -> ais_graph_metrics_export
+  -> dbt_graph_models
+  -> dbt_vessel_daily_anomalies -> ai_enrichment
   -> dbt_vessel_daily_enriched -> dbt_tests
 ```
 
-The core step seeds ship types and navigational statuses, then builds `+vessels`.
-The AI task uses the UTC day before the DAG run's logical date and processes up
-to 100 new vessel-days per run by default. Set `AI_ENRICHMENT_LIMIT` to change
-that cap; an explicit `--limit` overrides it for standalone runs. The final mart
-can contain unenriched rows when the cap is reached. A task failure stops the
-following tasks. Set `OPENAI_API_KEY` in the
-untracked `.env` before enabling this DAG; the Compose service passes it into
-Airflow. The existing `dbt/profiles.yml.example` is copied into the image as the
-profile, using ClickHouse credentials from environment variables. The AI output
-table must exist; on an existing ClickHouse volume, apply
-`clickhouse/init/03_vessel_ai_enrichment.sql` manually if it was not applied during
-initialization. This DAG does not perform historical AIS ingestion or Neo4j work.
+- `dbt_core` seeds ship/status references and builds `+vessels` once.
+- The feature model reads canonical ClickHouse AIS. Graph processing also reads
+  canonical AIS; it does not depend on AI results.
+- Each graph stage uses `TriggerDagRunOperator`, waits for successful completion,
+  and defers while waiting. A running triggerer and unpaused child DAGs are required.
+  Port visits downloads its reference, detects visits, and publishes `CONNECTED_TO`;
+  GDS calculates/writes/validates metrics and always cleans up projections; export
+  writes the resulting ClickHouse graph snapshot. Existing child retry/timeouts
+  remain unchanged. Trigger-task retries are zero to avoid replaying child runs.
+- `dbt_graph_models` refreshes `current_port_visits` after graph export. Country
+  enrichment and `port_graph_metrics_enriched` remain optional because they require
+  separately provisioned Airbyte data. No graph or AI algorithms are duplicated.
+- Anomalies are built before AI; the enriched vessel mart and tests run only after
+  AI succeeds. The ordinary dbt/AI tasks retain one retry after five minutes.
 
-Manual dbt and AI commands remain available from the repository root. For a safe
-container check, use:
+### Shared activity date
+
+`resolve_activity_date` validates an explicit `activity_date`, or resolves yesterday
+UTC from the master run's actual start time. It captures that day once in XCom:
+port visits receives `[activity_date, next date)` at UTC midnight, and AI receives
+`--date activity_date`. This explicitly pins the default day too, so a run crossing
+midnight cannot publish one day's graph and explain another day's anomalies.
+There is no `dag_run.logical_date` arithmetic. Standalone Python execution still
+uses its original yesterday-UTC default when `--date` is omitted.
+
+The graph's canonical run ID remains UTC window start, e.g.
+`2026-09-27T00:00:00Z`. GDS/export consume the graph metadata published by that visit
+run; they do not infer today. dbt models build their existing historical relations
+and do not accept an artificial day filter.
+
+### Run the master
+
+After the [quickstart](../README.md#fresh-clone-quickstart), unpause the master and
+its graph children. Do not run independent graph writers concurrently with it.
 
 ```sh
-docker compose exec airflow python -m pipelines.ai_enrichment.enrich_vessels \
-  --date 2026-09-22 --limit 1
+for dag in ais_port_visits ais_gds_metrics ais_graph_metrics_export daily_ais_pipeline; do
+  docker compose exec -T airflow airflow dags unpause "$dag"
+done
+
+# Normal run: yesterday UTC, captured at master run start.
+docker exec ais-airflow airflow dags trigger daily_ais_pipeline
+
+# Historical run: one explicitly requested day.
+docker exec ais-airflow airflow dags trigger daily_ais_pipeline \
+  --conf '{"activity_date":"2026-09-27"}'
+
+# Optional port-visit safety ceiling; this is not the AI call limit.
+docker exec ais-airflow airflow dags trigger daily_ais_pipeline \
+  --conf '{"activity_date":"2026-09-27","max_rows":5000000}'
 ```
 
-The DAG has no automatic schedule. A manual trigger uses the previous UTC date
-relative to that run's logical date. Check the API key and expected AI volume
-before triggering a run.
+`activity_date` must be a real `YYYY-MM-DD` date. Null/empty values, timestamps,
+malformed dates, and shell input fail before processing. `max_rows`, if supplied,
+must be a positive integer; otherwise the existing port-visits environment default
+applies. A historical date is retained across task retries.
+
+### AI behavior and recovery
+
+Only anomaly ranks 1–100 are AI eligible, in ascending order. Matching
+model/prompt/input hashes are skipped before applying `AI_ENRICHMENT_LIMIT`;
+skipping never admits rank 101+. The prompt version remains `vessel_anomaly_v1`.
+The master does not hard-code `--limit`; standalone execution still supports it.
+The append-only history table, immediate inserts, token usage, and response IDs
+are unchanged. Configure `OPENAI_API_KEY` before running the master. The final mart
+can contain unenriched rows. On existing volumes, ensure
+`clickhouse/init/03_vessel_ai_enrichment.sql` has been applied.
+
+Any child failure blocks subsequent stages. After resolving a failure, start a
+new master run for the same explicit day; clearing trigger tasks does not reset
+existing child runs. `max_active_runs=1` serializes masters but is not a lock across
+independent child runs or external graph writers. Valid published empty graph
+snapshots remain supported. No historical ClickHouse data is deleted by the merge.
 
 ## Three tasks
 
@@ -291,48 +346,17 @@ To download ports manually without Airflow:
 
 ## Sequential daily analytics
 
-Manually trigger `ais_analytics_pipeline` with inclusive `start`, exclusive `end`,
-and optional `max_rows` (otherwise the port-visits environment default applies):
+The local helper now triggers the consolidated master for **one** day:
 
 ```sh
-docker compose exec -T airflow airflow dags trigger ais_analytics_pipeline \
-  --conf '{"start":"2026-09-01","end":"2026-09-17","max_rows":5000000}'
+bash airflow/daily_run.sh 2026-09-27 5000000
 ```
 
-Or use the helper from the repository root (requires host `python3`):
+Its interface is `ACTIVITY_DATE [MAX_ROWS]` and requires host `python3`. It validates
+inputs using the master's date resolver. The previous start/end range interface
+is retired; callers must submit one `activity_date` per run and wait for the full
+master to succeed before advancing to the next day. Do not queue a new graph
+snapshot independently between GDS and export.
 
-```sh
-bash airflow/daily_run.sh 2026-09-01 2026-09-17 5000000
-```
-
-The helper accepts `START_DATE END_DATE [MAX_ROWS]`, validates strict `YYYY-MM-DD`
-dates and a positive optional row limit, and triggers only the master DAG. Start
-is inclusive and end is exclusive; omitting `MAX_ROWS` uses the port-visits
-environment default. Airflow must already be running.
-
-This runs 16 daily chains, each `ais_port_visits -> ais_gds_metrics ->
-ais_graph_metrics_export`, waiting for export success before the next day starts.
-A small Airflow 3 `TriggerDagRunOperator` subclass defers between child runs;
-it reconstructs progress from the child completion event on each resume. No child
-processing logic is copied. The master displays one coordinating task; child DAG
-runs show individual stages. A running triggerer and unpaused children are required.
-
-Explicit dates are required for the master; no rolling master default remains.
-Standalone port visits retains its rolling default when both keys are omitted.
-Existing callers passing explicit timestamps must switch to dates; use the existing
-pipeline CLI directly if a non-daily explicit timestamp window is needed.
-The analytical run ID still comes from the existing UTC start timestamp function,
-e.g. `2026-09-01T00:00:00Z`. Airflow child execution IDs are only orchestration IDs.
-
-Failure or an unexpected completion event stops advancement. Retries remain zero;
-clearing the coordinating task does not reset existing child runs automatically.
-For recovery, inspect the failed child and start a new master run for the desired
-remaining date range after resolving the failure. Daily ClickHouse retry semantics
-remain unchanged. Historical rows are not rewritten.
-
-Do not independently trigger graph-changing port-visits runs during the master:
-`max_active_runs=1` serializes masters but is not a global lock across child DAGs.
-GDS/export still consume current graph metadata. GDS calculates, writes, and
-validates Neo4j metrics; only the standalone export DAG writes them to ClickHouse.
-A valid published empty snapshot skips GDS calculation and exports zero rows, so
-the range can continue. Missing or inconsistent durable snapshot metadata fails.
+All analytics are coordinated by `daily_ais_pipeline`; see the
+[full chain and default/historical commands](#consolidated-daily-ais-pipeline).

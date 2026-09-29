@@ -15,6 +15,7 @@ class VesselEnrichmentTests(unittest.TestCase):
             with self.subTest(configured=configured):
                 env = os.environ.copy()
                 env.pop('AI_ENRICHMENT_LIMIT', None)
+                env['PYTHON_DOTENV_DISABLED'] = '1'
                 if configured is not None:
                     env['AI_ENRICHMENT_LIMIT'] = configured
                 result = subprocess.run(
@@ -27,9 +28,9 @@ class VesselEnrichmentTests(unittest.TestCase):
 
     def test_limit_selects_new_rows_after_matching_hashes_are_skipped(self):
         vessels = [
-            {'mmsi': 1, 'activity_date': date(2026, 9, 22), 'vessel_name': 'One'},
-            {'mmsi': 2, 'activity_date': date(2026, 9, 22), 'vessel_name': 'Two'},
-            {'mmsi': 3, 'activity_date': date(2026, 9, 22), 'vessel_name': 'Three'},
+            {'mmsi': 1, 'activity_date': date(2026, 9, 22), 'vessel_name': 'One', 'anomaly_rank': 1},
+            {'mmsi': 2, 'activity_date': date(2026, 9, 22), 'vessel_name': 'Two', 'anomaly_rank': 2},
+            {'mmsi': 3, 'activity_date': date(2026, 9, 22), 'vessel_name': 'Three', 'anomaly_rank': 3},
         ]
         existing = {(1, enrichment.calculate_input_hash(vessels[0]))}
         with patch.object(sys, 'argv', ['enrich_vessels', '--date', '2026-09-22',

@@ -19,4 +19,4 @@ vars:
   ais_analysis_start_date: '2026-09-01 00:00:00'
   ais_stationary_speed_kn: 0.5
   ai_model: "{{ env_var('OPENAI_MODEL', 'gpt-6-luna') }}"
-  ai_prompt_version: 'vessel_daily_v1'
+  ai_prompt_version: 'vessel_anomaly_v1'

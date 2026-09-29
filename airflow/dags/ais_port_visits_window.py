@@ -12,21 +12,6 @@ def parse_date(value, field_name):
         raise ValueError(f'{field_name} must be a valid YYYY-MM-DD date') from None
 
 
-def daily_windows(conf):
-    """Explicit master range: inclusive start, exclusive end, one conf per day."""
-    conf = conf or {}
-    start = parse_date(conf.get('start'), 'start')
-    end = parse_date(conf.get('end'), 'end')
-    if start >= end:
-        raise ValueError('start must be earlier than end')
-    extra = {}
-    if conf.get('max_rows') is not None:
-        extra['max_rows'] = _positive_int(conf['max_rows'], 'max_rows')
-    return [dict(start=(start + timedelta(days=i)).date().isoformat(),
-                 end=(start + timedelta(days=i + 1)).date().isoformat(), **extra)
-            for i in range((end - start).days)]
-
-
 def _positive_int(value, field_name):
     try:
         parsed = int(value)

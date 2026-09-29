@@ -10,6 +10,25 @@ models:
         data_tests:
           - not_null
 
+  - name: vessel_daily_anomalies
+    data_tests:
+      - unique:
+          arguments:
+            column_name: "tuple(activity_date, mmsi)"
+      - unique:
+          arguments:
+            column_name: "tuple(activity_date, anomaly_rank)"
+    columns:
+      - name: mmsi
+        data_tests:
+          - not_null
+      - name: activity_date
+        data_tests:
+          - not_null
+      - name: anomaly_rank
+        data_tests:
+          - not_null
+
   - name: vessel_daily_enriched
     columns:
       - name: mmsi
