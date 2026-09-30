@@ -14,6 +14,7 @@ COPY --chown=airflow:root dbt/dbt_project.yml /opt/ais/dbt/dbt_project.yml
 COPY --chown=airflow:root dbt/profiles.yml.example /opt/ais/dbt/profiles.yml
 COPY --chown=airflow:root dbt/models /opt/ais/dbt/models
 COPY --chown=airflow:root dbt/macros /opt/ais/dbt/macros
+COPY --chown=airflow:root dbt/tests /opt/ais/dbt/tests
 COPY --chown=airflow:root dbt/seeds /opt/ais/dbt/seeds
 COPY --chown=airflow:root clickhouse/init/02_port_visits.sql /opt/ais/clickhouse/init/02_port_visits.sql
 COPY --chown=airflow:root airflow/dags /opt/ais/airflow/dags

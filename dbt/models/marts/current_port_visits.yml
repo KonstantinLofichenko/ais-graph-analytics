@@ -1,0 +1,13 @@
+version: 2
+
+models:
+  - name: current_port_visits
+    description: "Active visits in the latest completed run; FINAL and is_deleted = 0."
+    columns:
+      - name: activity_date
+        description: >-
+          Logical processing date copied from port_visits.activity_date.
+          The visit writer supplies the UTC processing window-start date;
+          historical values come from port_visit_runs.window_start, never arrival_at.
+        data_tests:
+          - not_null

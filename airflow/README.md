@@ -121,7 +121,13 @@ The master does not hard-code `--limit`; standalone execution still supports it.
 The append-only history table, immediate inserts, token usage, and response IDs
 are unchanged. Configure `OPENAI_API_KEY` before running the master. The final mart
 can contain unenriched rows. On existing volumes, ensure
-`clickhouse/init/03_vessel_ai_enrichment.sql` has been applied.
+`clickhouse/init/03_vessel_ai_enrichment.sql` and migration
+`009_vessel_ai_input_hashes.sql` have been applied. The anomaly task also builds
+`int_vessel_ai_candidates`; Python refreshes canonical hash mappings before AI,
+and the final model task builds `int_vessel_ai_current_inputs` before presentation.
+Only exact current top-100 input/model/prompt matches are displayed. See
+[hash-only freshness refresh](../dbt/README.md#ai-freshness-without-openai-calls)
+for rebuilding presentation without API calls.
 
 Any child failure blocks subsequent stages. After resolving a failure, start a
 new master run for the same explicit day; clearing trigger tasks does not reset
@@ -148,7 +154,7 @@ download_ports -> run_port_visit_pipeline -> publish_port_connections
    refreshed in Neo4j. By default each run uses the trailing `PORT_VISITS_WINDOW_HOURS`
    window, ending at the Airflow run start time, fixed across task retries.
 3. Validate the completed visit run metadata, read only that run's individual visits
-   from `analytics.port_visits FINAL`, and publish aggregated Port-to-Port
+   from `analytics.port_visits FINAL WHERE is_deleted = 0`, and publish aggregated Port-to-Port
    `CONNECTED_TO` relationships. The publisher matches existing Ports by `portId`;
    a missing referenced Port fails the task without replacing the previous snapshot.
 
@@ -256,7 +262,7 @@ no catchup, one active run). Its stages run sequentially:
 ```text
 validate snapshot -> recreate two projections -> stream PageRank
   -> stream Louvain and collect stats -> clear/write metrics
-  -> validate metrics -> always clean up projections -> complete_gds_metrics
+  -> build_communities -> validate metrics/memberships -> always clean up projections -> complete_gds_metrics
 ```
 
 It uses the [manual GDS workflow's](../neo4j/gds/README.md) algorithm settings and
@@ -266,7 +272,9 @@ labels need not match between stream, stats, and write executions. After GDS
 succeeds, `ais_graph_metrics_export` exports results to `analytics.port_graph_metrics`. Metabase configuration is separate.
 
 The quickstart's bootstrap already applies
-[003_port_graph_metrics.sql](../clickhouse/migrations/003_port_graph_metrics.sql).
+[003_port_graph_metrics.sql](../clickhouse/migrations/003_port_graph_metrics.sql),
+[006_graph_community_labels.sql](../clickhouse/migrations/006_graph_community_labels.sql), and
+[008_port_graph_metrics_tombstones.sql](../clickhouse/migrations/008_port_graph_metrics_tombstones.sql).
 After completing setup, these standalone commands are available for inspecting
 one current snapshot; the daily master normally sequences them:
 
@@ -371,6 +379,46 @@ inputs using the master's date resolver. The previous start/end range interface
 is retired; callers must submit one `activity_date` per run and wait for the full
 master to succeed before advancing to the next day. Do not queue a new graph
 snapshot independently between GDS and export.
+
+### Sequential historical backfill
+
+Use the range helper to run the complete master once per activity date, oldest
+first. **Both dates are inclusive**; equal dates run exactly one day:
+
+```sh
+./scripts/backfill_daily_pipeline.sh 2026-09-28 2026-09-29
+```
+
+The host needs Bash, `python3`, and Docker. The script uses the existing
+`ais-airflow` container and Airflow 3 CLI. It checks that the master and three
+graph child DAGs are unpaused, valid, and idle, and that the master retains
+`max_active_runs=1`. It triggers each run with only `{"activity_date":"YYYY-MM-DD"}`;
+the existing environment still controls row limits and AI call limits.
+
+Each invocation gets a UUID, producing Airflow IDs such as
+`historical__2026-09-28__<batch_uuid>`. These are orchestration IDs, not new graph
+IDs: the graph still uses `2026-09-28T00:00:00Z`. The script polls
+`docker exec ais-airflow airflow dags state daily_ais_pipeline <run_id>` every
+15 seconds. Only `success` permits the next date; `failed`, CLI errors, or
+unexpected states stop the script with a nonzero exit code. Trigger commands are
+not retried automatically because a failed client response could still mean the
+server accepted the run.
+
+A local directory lock prevents two invocations sharing the host temporary
+directory. Airflow's master concurrency limit also serializes master runs from
+other clients and the unchanged 02:00 UTC schedule. Do not independently trigger
+graph child DAGs or other graph writers during a backfill.
+
+Interrupting the script stops polling, not the Airflow run. Inspect the printed
+run ID before retrying. Normal exit removes the lock; after a forced kill, remove
+the empty `ais-daily-pipeline-backfill.lock` directory under `${TMPDIR:-/tmp}` only
+after verifying no backfill process or active workflow remains. Rerunning creates
+new Airflow attempts for the same dates; it never deletes ClickHouse data and
+relies on existing pipeline idempotency and `ReplacingMergeTree` logical keys.
+
+For validation, `snapshot_date` is the UTC **window end** date. Activity dates
+September 28–29 therefore produce snapshot dates September 29–30; filter by the
+canonical `run_id` when checking those exact backfilled activity days.
 
 All analytics are coordinated by `daily_ais_pipeline`; see the
 [full chain and default/historical commands](#consolidated-daily-ais-pipeline).

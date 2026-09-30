@@ -34,6 +34,11 @@ migrations=(
   clickhouse/migrations/003_port_graph_metrics.sql
   clickhouse/migrations/004_hais_positions.sql
   clickhouse/migrations/005_hais_ingestion_runs.sql
+  clickhouse/migrations/006_graph_community_labels.sql
+  clickhouse/migrations/007_port_visits_tombstones.sql
+  clickhouse/migrations/008_port_graph_metrics_tombstones.sql
+  clickhouse/migrations/009_vessel_ai_input_hashes.sql
+  clickhouse/migrations/010_port_visits_activity_date.sql
 )
 for sql_file in "${migrations[@]}" neo4j/cypher/01_constraints.cypher; do
   [[ -r "$sql_file" ]] || fail "Cannot read $sql_file"

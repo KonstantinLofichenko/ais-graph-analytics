@@ -1,0 +1,108 @@
+{
+  "cache_ttl": null,
+  "dataset_query": {
+    "database": 2,
+    "lib/type": "mbql/query",
+    "stages": [
+      {
+        "breakout": [
+          [
+            "field",
+            {
+              "base-type": "type/BigInteger",
+              "effective-type": "type/BigInteger",
+              "lib/uuid": "a869f277-3c05-46fe-95e4-487c9eb915b4"
+            },
+            310
+          ],
+          [
+            "field",
+            {
+              "base-type": "type/Text",
+              "effective-type": "type/Text",
+              "lib/uuid": "614feed4-4c82-4676-af2c-bc503bee3076"
+            },
+            311
+          ],
+          [
+            "field",
+            {
+              "base-type": "type/Text",
+              "effective-type": "type/Text",
+              "lib/uuid": "4644e50d-f1da-4dc6-ab45-73f5bb319de4"
+            },
+            312
+          ],
+          [
+            "field",
+            {
+              "base-type": "type/BigInteger",
+              "effective-type": "type/BigInteger",
+              "lib/uuid": "5f03315f-005c-475a-92c8-54629e1c079f"
+            },
+            313
+          ]
+        ],
+        "lib/type": "mbql.stage/mbql",
+        "order-by": [
+          [
+            "desc",
+            {
+              "lib/uuid": "4e8887b2-0805-4b9d-8ca5-0e7a1c9e9488"
+            },
+            [
+              "field",
+              {
+                "base-type": "type/BigInteger",
+                "effective-type": "type/BigInteger",
+                "lib/uuid": "c5d28556-a0c8-4958-8bdc-2f6fe35feb08"
+              },
+              313
+            ]
+          ]
+        ],
+        "source-table": 26
+      }
+    ]
+  },
+  "description": null,
+  "display": "table",
+  "id": 57,
+  "name": "Communities list",
+  "parameter_mappings": [],
+  "parameters": [],
+  "type": "question",
+  "visualization_settings": {
+    "column_settings": {
+      "[\"name\",\"community_label\"]": {
+        "column_title": "Representative Ports"
+      },
+      "[\"name\",\"community_name\"]": {
+        "column_title": "Community"
+      },
+      "[\"name\",\"port_count\"]": {
+        "column_title": "Ports"
+      }
+    },
+    "table.cell_column": "port_count",
+    "table.columns": [
+      {
+        "enabled": true,
+        "name": "community_name"
+      },
+      {
+        "enabled": true,
+        "name": "community_label"
+      },
+      {
+        "enabled": true,
+        "name": "port_count"
+      },
+      {
+        "enabled": true,
+        "name": "community_id"
+      }
+    ],
+    "table.pivot_column": "community_name"
+  }
+}

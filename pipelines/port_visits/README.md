@@ -112,10 +112,12 @@ validation before operational use. No inference of visits during unobserved gaps
 ClickHouse (`analytics` database):
 
 - `ports`: latest reference record per port (`FINAL` when reading).
-- `port_visits`: individual visits per run, including boundary/evidence fields.
+- `port_visits`: versioned visits per run, including boundary/evidence fields.
+  Read active visits with `FINAL WHERE is_deleted = 0`; tombstones retain obsolete keys.
 - `port_visit_runs`: successfully published run metadata, thresholds, dataset hash,
   observation window and counts.
-- `current_port_visits`: only the most recently completed run, with `FINAL` applied.
+- `current_port_visits`: only active visits from the most recently completed run,
+  with `FINAL` and `is_deleted = 0` applied.
 
 An older run's visits remain available for inspection. Do not sum visits across
 runs: overlapping snapshots can represent the same underlying stay. New run IDs
@@ -149,10 +151,10 @@ managed visit edges are removed. Port fields use `portId`; vessel IDs remain int
 
 ### Consecutive port connections
 
-`pipelines/port_connections/run.py` reads `analytics.port_visits FINAL` for the exact
+`pipelines/port_connections/run.py` reads `analytics.port_visits FINAL WHERE is_deleted = 0` for the exact
 completed visit `run_id` passed by the upstream task and validates its completed-run
 metadata. It does not combine historical runs or select whichever run is latest.
-If the completed run's `visit_count` differs from its `FINAL` visit rows, publishing
+If the completed run's `visit_count` differs from its active `FINAL` visit rows, publishing
 fails before touching Neo4j.
 Each vessel's visits are ordered by `arrival_at`, then `visit_id` and `port_id` to
 resolve ties deterministically. Only adjacent visits form movements: A → B → C
@@ -182,18 +184,57 @@ Run one writer at a time from this checkout. A local file lock prevents overlapp
 local visit runs; it is not a distributed lock. Airflow enforces one active DAG run
 and one running task. Do not run host publishers concurrently with the DAG.
 
-Writes occur in this order: ClickHouse reference/visits → atomic Neo4j refresh →
-ClickHouse completed-run record. There is no cross-database transaction. If a failure
-occurs after the graph commit, its run ID may temporarily differ from ClickHouse's
-latest completed run. Rerun with the same explicit window and unchanged inputs to
-reconcile. Partial ClickHouse snapshots without a completed run are not exposed by
-the current view. Check run IDs before downstream similarity/export work.
+Writes occur in this order: ClickHouse reference → active visit versions and
+obsolete-visit tombstones in one INSERT request → active `FINAL` count validation
+→ atomic Neo4j refresh → ClickHouse completed-run record. Failed insertion,
+validation, or graph publication raises an error and writes no new completion
+record or successful Airflow handoff. The connection publisher still independently
+checks completed `visit_count` against active visits before writing connections.
 
-Recalculating the same start with changed data or settings still reuses the run
-ID. The existing insert-only behavior replaces matching `(run_id, visit_id)` keys
-but does not delete visits that disappear from the recalculation. Such retained
-rows cause the connection publisher's completed-run count check to fail. This
-refactor does not add snapshot cleanup or change that retry behavior.
+Recalculating the same start reuses the run ID. The publisher reads existing active
+visits with `FINAL WHERE run_id = ... AND is_deleted = 0`, compares visit IDs, and
+writes calculated visits with `is_deleted = 0`. Missing IDs get copies of their
+previous logical rows with `is_deleted = 1`. All versions in that publish share
+one timestamp, at least one microsecond newer than the run's previous maximum.
+The version-watermark query intentionally reads physical versions (including
+tombstones); an aggregate maximum does not need `FINAL`. Reappearing visits are
+reactivated with a newer version. No UPDATE/DELETE mutations are used.
+
+There is no cross-database transaction or distributed writer lock. A failure can
+leave new ClickHouse versions or a graph refresh without a new completion record;
+retry the same window to reconcile. For an already completed run ID, its older
+completion record remains, so the current view is not an isolation boundary during
+a failed rerun. Do not bypass the failed Airflow task or run concurrent publishers.
+
+Existing installations must apply the additive
+[007_port_visits_tombstones.sql](../../clickhouse/migrations/007_port_visits_tombstones.sql)
+before deploying the updated publisher/readers. Existing rows default to active;
+the migration also updates the bootstrap current-visits view. Bootstrap and
+`--apply --init` support the new schema. Rebuild the dbt `current_port_visits` and
+`port_graph_metrics_enriched` views so neither exposes tombstones:
+
+```sh
+docker exec -i ais-clickhouse sh -c \
+  'clickhouse-client --user "$CLICKHOUSE_USER" --password "$CLICKHOUSE_PASSWORD" --multiquery' \
+  < clickhouse/migrations/007_port_visits_tombstones.sql
+# Use the configured dbt environment; the enriched view needs the countries model.
+dbt run --project-dir dbt --select current_port_visits port_graph_metrics_enriched
+```
+
+Historical consistency check (including completed zero-visit runs):
+
+```sql
+SELECT r.run_id, r.visit_count, coalesce(v.active_visits, 0) AS active_visits
+FROM analytics.port_visit_runs AS r FINAL
+LEFT JOIN (
+    SELECT run_id, count() AS active_visits
+    FROM analytics.port_visits FINAL
+    WHERE is_deleted = 0
+    GROUP BY run_id
+) AS v ON r.run_id = v.run_id
+WHERE r.visit_count != coalesce(v.active_visits, 0)
+ORDER BY r.run_id;
+```
 
 Airflow starts connection publishing only after the visit task succeeds, passing
 only `run_id`, `window_start`, and `window_end` through XCom. The visit subprocess
@@ -252,3 +293,47 @@ using an older database with the DAG. For legacy rows, creation is the
 earliest retained ClickHouse update timestamp. For existing Neo4j nodes without a
 creation timestamp, creation is initialized at migration/load time. These backfills
 cannot recover original creation times that were never recorded.
+
+## Activity date upgrade
+
+`activity_date` is the UTC processing window-start date, supplied explicitly by
+the writer from the pipeline's resolved `start`. Airflow's `activity_date` becomes
+that day's UTC start boundary; standalone/rolling runs use their resolved UTC
+window start. Neither visit arrival time nor a parsed run ID supplies this date.
+`current_port_visits` copies it from active visits without recalculating it.
+Tombstones copy the obsolete row's original date.
+
+With all port/graph writers idle, apply the additive column migration and inspect
+the read-only backfill plan before publishing it:
+
+```sh
+docker exec -i ais-clickhouse sh -c \
+  'clickhouse-client --user "$CLICKHOUSE_USER" --password "$CLICKHOUSE_PASSWORD" --multiquery' \
+  < clickhouse/migrations/010_port_visits_activity_date.sql
+python -m pipelines.port_visits.backfill_activity_dates
+python -m pipelines.port_visits.backfill_activity_dates --apply
+```
+
+The physical column is `Nullable(Date)` so legacy unknown dates remain NULL until
+backfilled, rather than receiving an invented default. The backfill joins logical
+visit keys to `port_visit_runs FINAL` by `run_id` and uses the UTC `window_start`
+date. Missing run metadata or conflicting non-null dates fail before publication.
+Only missing logical rows (including tombstones) get newer `updated_at` versions;
+visit payloads, deletion flags, completion metadata and uniqueness keys stay intact.
+This avoids a full historical mutation. Obsolete physical versions can retain NULL
+until normal merges; all logical `FINAL` rows must be non-null after the backfill.
+The script is retry-safe and uses the local writer lock; keep external writers idle
+too, because the lock is not distributed across containers.
+
+For existing graph exports, also follow the
+[snapshot-date correction](../graph_metrics/README.md#storage-and-retries), then:
+
+```sh
+dbt parse --project-dir dbt
+dbt build --project-dir dbt --select current_port_visits port_graph_metrics_enriched port_graph_communities port_visit_activity_dates
+dbt test --project-dir dbt --select current_port_visits port_graph_metrics_enriched port_graph_communities port_visit_activity_dates
+```
+
+The current-visits view still represents only the latest completed run; date
+filtering it does not turn it into an all-history view. For historical visits,
+query `analytics.port_visits FINAL WHERE is_deleted = 0` with `activity_date`.

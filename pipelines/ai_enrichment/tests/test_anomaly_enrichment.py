@@ -49,11 +49,17 @@ class AnomalyEnrichmentTests(unittest.TestCase):
             'INSERT INTO analytics.vessel_daily_anomalies VALUES (' + ','.join('?' for _ in self.columns) + ')',
             [[v.isoformat() if isinstance(v, date) else v for v in row.values()] for row in rows],
         )
+        model = Path('dbt/models/intermediate/int_vessel_ai_candidates.sql').read_text()
+        projection = model.split('with candidates as (', 1)[1].split('\n)\nselect', 1)[0]
+        projection = projection.replace("{{ ref('vessel_daily_anomalies') }}", 'analytics.vessel_daily_anomalies')
+        projection = projection.replace('FROM analytics.vessel_daily_anomalies',
+                                        ", 'fixture' AS input_values FROM analytics.vessel_daily_anomalies")
+        self.db.execute('CREATE VIEW analytics.int_vessel_ai_candidates AS ' + projection + ' WHERE anomaly_rank <= 100')
         self.client = Mock()
         self.client.query.side_effect = self.query
 
     def query(self, query, parameters):
-        self.assertIn('FROM analytics.vessel_daily_anomalies', query)
+        self.assertIn('FROM analytics.int_vessel_ai_candidates', query)
         cursor = self.db.execute(query.replace('{activity_date:Date}', ':activity_date'),
                                  {'activity_date': parameters['activity_date'].isoformat()})
         names = [col[0] for col in cursor.description]
@@ -85,6 +91,7 @@ class AnomalyEnrichmentTests(unittest.TestCase):
             stack.enter_context(patch.object(sys, 'argv', argv))
             stack.enter_context(patch.object(enrichment, 'get_clickhouse_client', return_value=self.client))
             stack.enter_context(patch.object(enrichment, 'OpenAI'))
+            stack.enter_context(patch.object(enrichment, 'refresh_input_hashes', return_value=100))
             stack.enter_context(patch.object(enrichment, 'get_existing_hashes', return_value=existing))
             stack.enter_context(patch.object(enrichment, 'enrich_vessel', side_effect=call_ai))
             stack.enter_context(patch.object(enrichment, 'insert_enrichment', side_effect=insert))
@@ -103,7 +110,7 @@ class AnomalyEnrichmentTests(unittest.TestCase):
         self.assertEqual(set(rows[0]), set(vessel(1)))
         query = self.client.query.call_args.args[0]
         for field in self.columns:
-            self.assertIn('AS ' + field, query)
+            self.assertIn('AS ' + field, Path('dbt/models/intermediate/int_vessel_ai_candidates.sql').read_text())
 
     def test_skipping_first_five_still_makes_only_five_calls_and_inserts_immediately(self):
         existing = {(r['mmsi'], enrichment.calculate_input_hash(r)) for r in self.candidates()[:5]}

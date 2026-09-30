@@ -64,6 +64,10 @@ def parse_args():
         help="Maximum new OpenAI calls among anomaly ranks 1–100 (default: AI_ENRICHMENT_LIMIT or 100).",
     )
 
+    parser.add_argument(
+        "--refresh-input-hashes-only", action="store_true",
+        help="Refresh hashes for all current candidates; do not call OpenAI or write response history.",
+    )
     args = parser.parse_args()
 
     if args.limit <= 0:
@@ -86,87 +90,28 @@ def get_vessels(
     activity_date: date,
 ) -> list[dict]:
     query = """
-        SELECT
-            mmsi AS mmsi,
-            activity_date AS activity_date,
-            vessel_name AS vessel_name,
-            ship_type_name AS ship_type_name,
-            ship_category AS ship_category,
-
-            ais_points AS ais_points,
-
-            round(
-                toFloat64(observation_hours),
-                2
-            ) AS observation_hours,
-
-            round(
-                toFloat64(avg_speed_kn),
-                2
-            ) AS avg_speed_kn,
-
-            round(
-                toFloat64(max_speed_kn),
-                2
-            ) AS max_speed_kn,
-
-            round(
-                toFloat64(stationary_observation_pct),
-                1
-            ) AS stationary_observation_pct,
-
-            dominant_navigational_status_name
-                AS dominant_navigational_status_name,
-
-            round(
-                toFloat64(dominant_status_pct),
-                1
-            ) AS dominant_status_pct,
-
-            round(
-                toFloat64(nav_status_change_rate_pct),
-                1
-            ) AS nav_status_change_rate_pct,
-
-            baseline_days AS baseline_days,
-            baseline_avg_speed_kn AS baseline_avg_speed_kn,
-            baseline_sd_speed_kn AS baseline_sd_speed_kn,
-            speed_deviation_kn AS speed_deviation_kn,
-            speed_anomaly_threshold_kn AS speed_anomaly_threshold_kn,
-            speed_anomaly AS speed_anomaly,
-
-            baseline_stationary_pct AS baseline_stationary_pct,
-            baseline_sd_stationary_pct AS baseline_sd_stationary_pct,
-            stationary_deviation_pct AS stationary_deviation_pct,
-            stationary_anomaly_threshold_pct AS stationary_anomaly_threshold_pct,
-            stationary_anomaly AS stationary_anomaly,
-
-            status_speed_mismatch AS status_speed_mismatch,
-            navigation_status_inconsistent AS navigation_status_inconsistent,
-            anomaly_reason AS anomaly_reason,
-            anomaly_score AS anomaly_score,
-            anomaly_rank AS anomaly_rank
-
-        FROM analytics.vessel_daily_anomalies
-
+        SELECT * FROM analytics.int_vessel_ai_candidates
         WHERE activity_date = {activity_date:Date}
           AND anomaly_rank <= 100
-
-        ORDER BY
-            anomaly_rank ASC
+        ORDER BY anomaly_rank ASC
     """
+    result = clickhouse.query(query, parameters={"activity_date": activity_date})
+    return [{key: value for key, value in zip(result.column_names, row) if key != "input_values"}
+            for row in result.result_rows]
 
-    result = clickhouse.query(
-        query,
-        parameters={
-            "activity_date": activity_date,
-        },
-    )
 
-    return [
-        dict(zip(result.column_names, row))
-        for row in result.result_rows
-    ]
+def refresh_input_hashes(clickhouse):
+    """Map current typed inputs to the existing Python hash; never call OpenAI."""
+    result = clickhouse.query("SELECT * FROM analytics.int_vessel_ai_candidates")
+    mappings = []
+    for row in result.result_rows:
+        vessel = dict(zip(result.column_names, row))
+        input_values = vessel.pop("input_values")
+        mappings.append([input_values, calculate_input_hash(vessel)])
+    if mappings:
+        clickhouse.insert("analytics.vessel_ai_input_hashes", mappings,
+                          column_names=["input_values", "input_hash"])
+    return len(mappings)
 
 
 def calculate_input_hash(vessel: dict) -> str:
@@ -407,6 +352,11 @@ def main():
     print(f"Limit: {args.limit}")
 
     clickhouse = get_clickhouse_client()
+    refreshed = refresh_input_hashes(clickhouse)
+    print(f"Current input hashes refreshed: {refreshed}")
+    if args.refresh_input_hashes_only:
+        clickhouse.close()
+        return
     openai_client = OpenAI()
 
     vessels = get_vessels(

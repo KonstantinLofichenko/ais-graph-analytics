@@ -145,16 +145,17 @@ class PublicationRunIdTests(unittest.TestCase):
                     patch.object(run.GraphDatabase, 'driver') as driver:
                 clock.now.return_value = executed_at
                 ch, tx = Mock(), Mock()
-                ch.query.return_value = '' if attempt == 0 else json.dumps({
+                window_response = '' if attempt == 0 else json.dumps({
                     'window_start': run.date_string(start),
                     'window_end': run.date_string(end),
                 }) + '\n'
+                ch.query.side_effect = [window_response, '', '{"latest":null}', '{"active_visits":1}']
                 session = driver.return_value.__enter__.return_value.session.return_value.__enter__.return_value
                 session.execute_write.side_effect = lambda operation, *args: operation(tx, *args)
                 run.publish(ch, ports, visits, counts, run.canonical_run_id(start),
                             'dataset-hash', start, end, {}, stats)
 
-                ch.query.assert_called_once()
+                self.assertEqual(ch.query.call_count, 4)
                 ch.upsert_ports.assert_called_once_with(ports, 'dataset-hash', executed_at)
                 inserts = {call.args[0]: call.args[1] for call in ch.insert.call_args_list}
                 self.assertEqual(inserts['port_visits'][0]['run_id'], '2026-09-15T08:00:00Z')

@@ -90,6 +90,15 @@
               "lib/uuid": "f666892c-7f58-4aae-89c9-365aa68171d0"
             },
             112
+          ],
+          [
+            "field",
+            {
+              "base-type": "type/Text",
+              "effective-type": "type/Text",
+              "lib/uuid": "22493ab8-6b5f-4310-b302-cd35a9a64b4d"
+            },
+            307
           ]
         ],
         "lib/type": "mbql.stage/mbql",
@@ -140,6 +149,9 @@
   "type": "question",
   "visualization_settings": {
     "column_settings": {
+      "[\"name\",\"community_name\"]": {
+        "column_title": "Community"
+      },
       "[\"name\",\"max\"]": {
         "column_title": "Port Centrality Score"
       },
@@ -199,11 +211,15 @@
       },
       {
         "enabled": true,
-        "name": "community_id"
+        "name": "community_name"
       },
       {
         "enabled": true,
         "name": "max"
+      },
+      {
+        "enabled": true,
+        "name": "community_id"
       }
     ],
     "table.pivot_column": "port_name"

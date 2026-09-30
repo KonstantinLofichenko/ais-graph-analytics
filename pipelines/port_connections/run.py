@@ -59,7 +59,7 @@ def read_completed_visits(ch, metadata):
     data = ch.query('''
         SELECT visit_id, mmsi, port_id, toString(arrival_at, 'UTC') AS arrival_at
         FROM analytics.port_visits FINAL
-        WHERE run_id = {run_id:String}
+        WHERE run_id = {run_id:String} AND is_deleted = 0
         ORDER BY mmsi, arrival_at, visit_id
         FORMAT JSONEachRow''', {'param_run_id': metadata['run_id']})
     visits = [json.loads(line) for line in data.splitlines() if line.strip()]

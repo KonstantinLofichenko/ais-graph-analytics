@@ -33,9 +33,9 @@
             "dimension",
             [
               "field",
-              112,
+              307,
               {
-                "base-type": "type/BigInteger"
+                "base-type": "type/Text"
               }
             ],
             {
@@ -45,14 +45,14 @@
         },
         {
           "card_id": 40,
-          "parameter_id": "32760e99",
+          "parameter_id": "1d9e4fac",
           "target": [
             "dimension",
             [
               "field",
-              99,
+              353,
               {
-                "base-type": "type/Text"
+                "base-type": "type/Date"
               }
             ],
             {
@@ -134,9 +134,9 @@
             "dimension",
             [
               "field",
-              112,
+              307,
               {
-                "base-type": "type/BigInteger"
+                "base-type": "type/Text"
               }
             ],
             {
@@ -146,14 +146,14 @@
         },
         {
           "card_id": 41,
-          "parameter_id": "32760e99",
+          "parameter_id": "1d9e4fac",
           "target": [
             "dimension",
             [
               "field",
-              99,
+              353,
               {
-                "base-type": "type/Text"
+                "base-type": "type/Date"
               }
             ],
             {
@@ -206,7 +206,7 @@
       "action_id": null,
       "card_id": 42,
       "col": 0,
-      "dashboard_tab_id": 4,
+      "dashboard_tab_id": 7,
       "inline_parameters": [],
       "parameter_mappings": [
         {
@@ -233,26 +233,26 @@
             "dimension",
             [
               "field",
-              "Community ID",
+              307,
               {
-                "base-type": "type/BigInteger"
+                "base-type": "type/Text"
               }
             ],
             {
-              "stage-number": 1
+              "stage-number": 0
             }
           ]
         },
         {
           "card_id": 42,
-          "parameter_id": "32760e99",
+          "parameter_id": "1d9e4fac",
           "target": [
             "dimension",
             [
               "field",
-              99,
+              353,
               {
-                "base-type": "type/Text"
+                "base-type": "type/Date"
               }
             ],
             {
@@ -261,16 +261,16 @@
           ]
         }
       ],
-      "row": 5,
+      "row": 0,
       "series": [],
-      "size_x": 12,
-      "size_y": 7,
+      "size_x": 24,
+      "size_y": 10,
       "visualization_settings": {}
     },
     {
       "action_id": null,
       "card_id": 43,
-      "col": 12,
+      "col": 0,
       "dashboard_tab_id": 4,
       "inline_parameters": [],
       "parameter_mappings": [
@@ -293,31 +293,14 @@
         },
         {
           "card_id": 43,
-          "parameter_id": "e5e37f1",
+          "parameter_id": "1d9e4fac",
           "target": [
             "dimension",
             [
               "field",
-              "community_id",
+              353,
               {
-                "base-type": "type/BigInteger"
-              }
-            ],
-            {
-              "stage-number": 1
-            }
-          ]
-        },
-        {
-          "card_id": 43,
-          "parameter_id": "32760e99",
-          "target": [
-            "dimension",
-            [
-              "field",
-              99,
-              {
-                "base-type": "type/Text"
+                "base-type": "type/Date"
               }
             ],
             {
@@ -1143,6 +1126,37 @@
       "size_x": 24,
       "size_y": 7,
       "visualization_settings": {}
+    },
+    {
+      "action_id": null,
+      "card_id": 57,
+      "col": 12,
+      "dashboard_tab_id": 4,
+      "inline_parameters": [],
+      "parameter_mappings": [
+        {
+          "card_id": 57,
+          "parameter_id": "1d9e4fac",
+          "target": [
+            "dimension",
+            [
+              "field",
+              352,
+              {
+                "base-type": "type/Date"
+              }
+            ],
+            {
+              "stage-number": 0
+            }
+          ]
+        }
+      ],
+      "row": 5,
+      "series": [],
+      "size_x": 12,
+      "size_y": 7,
+      "visualization_settings": {}
     }
   ],
   "description": null,
@@ -1161,65 +1175,6 @@
       "type": "string/="
     },
     {
-      "default": [
-        "2026-09-24T00:00:00Z"
-      ],
-      "filteringParameters": [
-        "f247577e"
-      ],
-      "id": "32760e99",
-      "isMultiSelect": false,
-      "name": "Run ID",
-      "required": true,
-      "sectionId": "string",
-      "slug": "run_id",
-      "type": "string/="
-    },
-    {
-      "id": "e5e37f1",
-      "name": "Community ID",
-      "sectionId": "number",
-      "slug": "community_id",
-      "type": "number/="
-    },
-    {
-      "default": "past1days",
-      "id": "afd55c8c",
-      "name": "Last Seen",
-      "required": true,
-      "sectionId": "date",
-      "slug": "last_seen",
-      "type": "date/relative"
-    },
-    {
-      "id": "a5a32147",
-      "name": "Vessel name",
-      "sectionId": "string",
-      "slug": "vessel_name",
-      "type": "string/contains"
-    },
-    {
-      "id": "a0d1a8c3",
-      "name": "Ship Category",
-      "sectionId": "string",
-      "slug": "ship_category",
-      "type": "string/="
-    },
-    {
-      "id": "9954d772",
-      "name": "Navigational Status",
-      "sectionId": "string",
-      "slug": "navigational_status",
-      "type": "string/="
-    },
-    {
-      "id": "968d076d",
-      "name": "Ship Type",
-      "sectionId": "string",
-      "slug": "ship_type",
-      "type": "string/="
-    },
-    {
       "default": "2026-09-28",
       "id": "1d9e4fac",
       "name": "Date",
@@ -1227,17 +1182,86 @@
       "sectionId": "date",
       "slug": "date",
       "type": "date/single"
+    },
+    {
+      "filteringParameters": [
+        "f247577e",
+        "1d9e4fac"
+      ],
+      "id": "e5e37f1",
+      "name": "Community",
+      "sectionId": "string",
+      "slug": "community",
+      "type": "string/="
+    },
+    {
+      "default": "2026-09-29",
+      "id": "afd55c8c",
+      "name": "Last Seen",
+      "required": true,
+      "sectionId": "date",
+      "slug": "last_seen",
+      "type": "date/single"
+    },
+    {
+      "filteringParameters": [
+        "afd55c8c"
+      ],
+      "id": "a5a32147",
+      "name": "Vessel name",
+      "sectionId": "string",
+      "slug": "vessel_name",
+      "type": "string/contains"
+    },
+    {
+      "filteringParameters": [
+        "afd55c8c"
+      ],
+      "id": "a0d1a8c3",
+      "name": "Ship Category",
+      "sectionId": "string",
+      "slug": "ship_category",
+      "type": "string/="
+    },
+    {
+      "filteringParameters": [
+        "afd55c8c"
+      ],
+      "id": "9954d772",
+      "name": "Navigational Status",
+      "sectionId": "string",
+      "slug": "navigational_status",
+      "type": "string/="
+    },
+    {
+      "filteringParameters": [
+        "afd55c8c"
+      ],
+      "id": "968d076d",
+      "name": "Ship Type",
+      "sectionId": "string",
+      "slug": "ship_type",
+      "type": "string/="
     }
   ],
   "tabs": [
+    {
+      "created_at": "2026-09-30T08:03:00.620341Z",
+      "dashboard_id": 2,
+      "entity_id": "yEsHvfp20_fRQdWskf8z4",
+      "id": 7,
+      "name": "Ports on Map",
+      "position": 0,
+      "updated_at": "2026-09-30T08:04:32.078003Z"
+    },
     {
       "created_at": "2026-09-26T09:08:31.561033Z",
       "dashboard_id": 2,
       "entity_id": "ieUHc-zYRd3Nauqx56XDM",
       "id": 4,
       "name": "Ports",
-      "position": 0,
-      "updated_at": "2026-09-26T09:08:31.561033Z"
+      "position": 1,
+      "updated_at": "2026-09-30T08:04:32.078003Z"
     },
     {
       "created_at": "2026-09-26T09:08:31.561033Z",
@@ -1245,8 +1269,8 @@
       "entity_id": "KwwkkhYCCbL-SWAmpF5ot",
       "id": 5,
       "name": "Vessels",
-      "position": 1,
-      "updated_at": "2026-09-26T09:08:31.561033Z"
+      "position": 2,
+      "updated_at": "2026-09-30T08:04:32.078003Z"
     },
     {
       "created_at": "2026-09-29T10:40:11.338691Z",
@@ -1254,8 +1278,8 @@
       "entity_id": "sEKyPRKH2IbG5oHfTuVrA",
       "id": 6,
       "name": "Anomalies & AI Insights",
-      "position": 2,
-      "updated_at": "2026-09-29T10:40:11.338691Z"
+      "position": 3,
+      "updated_at": "2026-09-30T08:04:32.078003Z"
     }
   ],
   "width": "full"

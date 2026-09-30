@@ -17,16 +17,26 @@ sources:
     schema: analytics
     tables:
       - name: port_visits
-        description: "Detected vessel port visits produced by the port visit pipeline."
+        description: "Versioned vessel port visits; consumers must use FINAL and is_deleted = 0."
+        columns:
+          - name: activity_date
+            description: >-
+              UTC processing window-start date supplied by the writer. Legacy
+              dates are backfilled from port_visit_runs.window_start. Physical
+              Nullable(Date) allows unmigrated versions to stay unknown; active
+              logical rows must be non-null after migration 010 and its backfill.
 
       - name: port_visit_runs
         description: "Metadata for completed port visit processing runs."
 
       - name: port_graph_metrics
-        description: "Snapshot-specific graph metrics exported from Neo4j GDS."
+        description: "Versioned snapshot-specific graph metrics; consumers must use FINAL and is_deleted = 0."
 
       - name: ports
         description: "Port reference data used by the port visit and graph pipelines."
+
+      - name: vessel_ai_input_hashes
+        description: "Exact typed candidate values mapped to the canonical Python input_hash; read FINAL."
 
       - name: vessel_ai_enrichment
         description: "AI enrichment data for vessels, including activity classification and notable behaviors."

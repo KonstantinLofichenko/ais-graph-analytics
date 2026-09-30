@@ -1,0 +1,42 @@
+version: 2
+
+models:
+  - name: port_graph_communities
+    description: >-
+      One row per graph run and Louvain community, derived from
+      port_graph_metrics_enriched. Labels are exported snapshot values shared by
+      member ports; historical communities without labels remain NULL.
+      Community IDs may be reused across runs and are not stable global identities.
+    data_tests:
+      - unique:
+          arguments:
+            column_name: "tuple(run_id, community_id)"
+    columns:
+      - name: run_id
+        description: "Snapshot run ID preserved from the graph metrics export."
+        data_tests:
+          - not_null
+      - name: community_id
+        description: "Louvain community ID within this run."
+        data_tests:
+          - not_null
+      - name: activity_date
+        description: >-
+          Graph snapshot date inherited from port_graph_metrics_enriched,
+          where activity_date = snapshot_date. The exporter uses the
+          UTC processing window-start date. This is a filter field;
+          the community key remains (run_id, community_id), not date/community.
+        data_tests:
+          - not_null
+      - name: community_name
+        description: >-
+          Snapshot-derived highest-PageRank port name. NULL for historical runs
+          exported before community naming; no fallback or backfill is applied.
+      - name: community_label
+        description: >-
+          Snapshot-derived label of up to three highest-PageRank port names joined
+          by ' / '. NULL for historical runs without exported community labels.
+      - name: port_count
+        description: >-
+          Exact count of distinct port_id values in the community for this run.
+          Calculated from port rows because the export has no community port_count.

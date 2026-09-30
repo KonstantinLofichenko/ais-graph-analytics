@@ -16,7 +16,8 @@
     53,
     54,
     55,
-    56
+    56,
+    57
   ],
   "card_dependencies": {
     "40": [],
@@ -35,13 +36,14 @@
     "53": [],
     "54": [],
     "55": [],
-    "56": []
+    "56": [],
+    "57": []
   },
   "card_files": {
     "40": "40-top-10-ports-by-centrality-score.json",
     "41": "41-bottom-10-ports-by-centrality-score.json",
     "42": "42-port-map.json",
-    "43": "43-ports-by-louvain-community.json",
+    "43": "43-vessels-and-visits-by-louvain-community.json",
     "44": "44-total-vessels.json",
     "45": "45-active-vessels-last-24h.json",
     "46": "46-vessels-by-ship-category.json",
@@ -54,7 +56,8 @@
     "53": "53-average-anomaly-severity.json",
     "54": "54-anomalies-by-type.json",
     "55": "55-top-10-anomalies.json",
-    "56": "56-ai-insights-table.json"
+    "56": "56-ai-insights-table.json",
+    "57": "57-communities-list.json"
   },
   "dashboard_id": 2,
   "dashboard_name": "Norway Port Graph Analytics ",
@@ -77,6 +80,7 @@
     53,
     54,
     55,
-    56
+    56,
+    57
   ]
 }

@@ -35,7 +35,11 @@ GDS leaves `visitRunId`, `visitWindowStart`, and `visitWindowEnd` unchanged.
 Export requires complete metrics and `Port.visitRunId == CONNECTED_TO.runId`.
 The automated DAG also requires that ID to match its captured `run_id` and checks
 that the managed graph has not changed during calculation. For manual execution,
-finish write-back for the current snapshot before exporting: visit metadata
+finish write-back and run `.venv/bin/python -m pipelines.graph_metrics.communities`
+from the repository root before exporting. This replaces current Community nodes
+and memberships, including clearing them for an empty snapshot. See the
+[Community layer](../../pipelines/graph_metrics/README.md#current-community-layer).
+Existing visit metadata
 identifies the input snapshot, not when the metric values were calculated.
 
 ## Input and interpretation

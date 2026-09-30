@@ -82,11 +82,7 @@ PROJECTED_PORTS = '''
     UNWIND [sourceNodeId, targetNodeId] AS nodeId
     WITH DISTINCT gds.util.asNode(nodeId) AS port
 '''
-METRICS_QUERY = PROJECTED_PORTS + '''
-    RETURN collect({port_id: port.portId, page_rank: port.pageRank,
-                    community_id: port.communityId,
-                    visit_run_id: port.visitRunId}) AS ports
-'''
+METRICS_QUERY = PROJECTED_PORTS + ' RETURN collect(' + metrics_export.PORT_PROPERTIES + ') AS ports'
 
 
 @contextmanager
@@ -291,7 +287,14 @@ def write_metrics_to_neo4j(state):
     return dict(state, communities=louvain['communityCount'], modularity=louvain['modularity'])
 
 
+def build_communities(state):
+    from pipelines.graph_metrics.communities import build_communities as build
+    build(state)
+    return state
+
+
 def _validated_metrics(tx, state):
+    from pipelines.graph_metrics.communities import validate_layer
     _assert_snapshot(state, _read_snapshot(tx))
     _check_projections(tx, state)
     if state['relationships'] == 0:
@@ -299,6 +302,7 @@ def _validated_metrics(tx, state):
             raise ExportValidationError('Empty snapshot must have zero nodes and communities')
         if _single(tx.run(STALE_METRICS_QUERY))['stale_ports']:
             raise ExportValidationError('Stale Port metrics remain after empty snapshot cleanup')
+        validate_layer(tx, state, [])
         _assert_snapshot(state, _read_snapshot(tx))
         return []
     ports = _single(tx.run(METRICS_QUERY, graph=DIRECTED))['ports']
@@ -307,6 +311,7 @@ def _validated_metrics(tx, state):
         raise ExportValidationError('Metric port count differs from the projected active Ports')
     if len({row['community_id'] for row in rows}) != state['communities']:
         raise ExportValidationError('Written community count differs from the current Port metrics')
+    validate_layer(tx, state, ports)
     _assert_snapshot(state, _read_snapshot(tx))
     return rows
 

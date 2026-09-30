@@ -31,13 +31,23 @@ def main():
         visits,stats = detect(rows,[port])
         assert len(visits)==2
         counts=summaries(visits)
-        payload=[dict(v,run_id=run_id,updated_at=now) for v in visits]
+        payload=[dict(v,run_id=run_id,activity_date=now.date().isoformat(),updated_at=now) for v in visits]
         ch.insert('port_visits',payload)
         ch.insert('port_visits',payload)
-        assert ch.query('SELECT count() FROM analytics.port_visits FINAL').strip()=='2'
+        assert ch.query('SELECT count() FROM analytics.port_visits FINAL WHERE is_deleted = 0').strip()=='2'
         ch.insert('port_visit_runs',[dict(run_id=run_id,window_start=now,window_end=now+timedelta(days=1),
                   dataset_hash='test',parameters='{}',source_rows=len(rows),visit_count=2,completed_at=now)])
         assert ch.query('SELECT count() FROM analytics.current_port_visits').strip()=='2'
+        # A smaller recalculation must hide the obsolete visit through both readers.
+        run.publish_visits(ch, visits[:1], run_id, now + timedelta(hours=2), activity_date=now.date().isoformat())
+        assert ch.query('SELECT count() FROM analytics.port_visits FINAL WHERE is_deleted = 0').strip() == '1'
+        assert ch.query('SELECT count() FROM analytics.port_visits FINAL WHERE is_deleted = 1').strip() == '1'
+        assert ch.query('SELECT count() FROM analytics.current_port_visits').strip() == '1'
+        run.publish_visits(ch, visits[:1], run_id, now + timedelta(hours=3), activity_date=now.date().isoformat())
+        assert ch.query('SELECT count() FROM analytics.port_visits FINAL WHERE is_deleted = 0').strip() == '1'
+        # Reappearing visits must outrank their tombstones.
+        run.publish_visits(ch, visits, run_id, now + timedelta(hours=4), activity_date=now.date().isoformat())
+        assert ch.query('SELECT count() FROM analytics.current_port_visits').strip() == '2'
         run.OWNER='test:'+uuid.uuid4().hex
         with run.GraphDatabase.driver(os.getenv('NEO4J_URI','bolt://localhost:7687'),
                                       auth=(os.getenv('NEO4J_USER','neo4j'),os.environ['NEO4J_PASSWORD'])) as driver:

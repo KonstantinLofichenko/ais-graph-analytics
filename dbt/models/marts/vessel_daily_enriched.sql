@@ -4,100 +4,39 @@
     order_by='(activity_date, mmsi)'
 ) }}
 
-with ai_filtered as (
-
+with matching_responses as (
     select
-        mmsi as mmsi,
-        activity_date as activity_date,
-        activity_class as activity_class,
-        navigation_status_quality as navigation_status_quality,
-        summary as summary,
-        notable_behavior as notable_behavior,
-        data_quality_note as data_quality_note,
-        model as model,
-        prompt_version as prompt_version,
-        input_hash as input_hash,
-        openai_response_id as openai_response_id,
-        input_tokens as input_tokens,
-        output_tokens as output_tokens,
-        created_at as created_at
-
-    from {{ source('analytics', 'vessel_ai_enrichment') }}
-
-    where model = '{{ var("ai_model") }}'
-      and prompt_version = '{{ var("ai_prompt_version") }}'
+        h.mmsi AS mmsi,
+        h.activity_date AS activity_date,
+        toNullable(h.activity_class) AS activity_class,
+        toNullable(h.navigation_status_quality) AS navigation_status_quality,
+        toNullable(h.summary) AS ai_summary,
+        toNullable(h.notable_behavior) AS ai_notable_behavior,
+        toNullable(h.data_quality_note) AS ai_data_quality_note,
+        toNullable(h.model) AS ai_model,
+        toNullable(h.prompt_version) AS ai_prompt_version,
+        toNullable(h.input_hash) AS ai_input_hash,
+        toNullable(h.openai_response_id) AS openai_response_id,
+        toNullable(h.input_tokens) AS ai_input_tokens,
+        toNullable(h.output_tokens) AS ai_output_tokens,
+        toNullable(h.created_at) AS ai_created_at,
+        toUInt8(1) AS ai_enrichment_exists,
+        row_number() over (
+            partition by h.activity_date, h.mmsi
+            order by h.created_at desc, h.openai_response_id desc
+        ) AS response_rank
+    from {{ source('analytics', 'vessel_ai_enrichment') }} AS h
+    inner join {{ ref('int_vessel_ai_current_inputs') }} AS c
+        on h.mmsi = c.mmsi
+       and h.activity_date = c.activity_date
+       and h.input_hash = c.current_ai_input_hash
+    where h.model = '{{ var("ai_model") }}'
+      and h.prompt_version = '{{ var("ai_prompt_version") }}'
+      and c.anomaly_rank <= 100
 ),
-
 ai_latest as (
-
-    select
-        mmsi as mmsi,
-        activity_date as activity_date,
-
-        argMax(
-            activity_class,
-            created_at
-        ) as activity_class,
-
-        argMax(
-            navigation_status_quality,
-            created_at
-        ) as navigation_status_quality,
-
-        argMax(
-            summary,
-            created_at
-        ) as ai_summary,
-
-        argMax(
-            notable_behavior,
-            created_at
-        ) as ai_notable_behavior,
-
-        argMax(
-            data_quality_note,
-            created_at
-        ) as ai_data_quality_note,
-
-        argMax(
-            model,
-            created_at
-        ) as ai_model,
-
-        argMax(
-            prompt_version,
-            created_at
-        ) as ai_prompt_version,
-
-        argMax(
-            input_hash,
-            created_at
-        ) as ai_input_hash,
-
-        argMax(
-            openai_response_id,
-            created_at
-        ) as openai_response_id,
-
-        argMax(
-            input_tokens,
-            created_at
-        ) as ai_input_tokens,
-
-        argMax(
-            output_tokens,
-            created_at
-        ) as ai_output_tokens,
-
-        max(created_at) as ai_created_at,
-
-        toUInt8(1) as ai_enrichment_exists
-
-    from ai_filtered
-
-    group by
-        mmsi,
-        activity_date
+    -- Choose one coherent response only within the exact current cache key.
+    select * from matching_responses where response_rank = 1
 )
 
 select
@@ -145,7 +84,7 @@ select
     ai.ai_created_at as ai_created_at,
 
     toUInt8(
-        ai.ai_enrichment_exists = 1
+        coalesce(ai.ai_enrichment_exists, 0) = 1
     ) as has_ai_enrichment
 
 from {{ ref('vessel_daily_features') }} as f

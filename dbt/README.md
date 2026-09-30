@@ -130,8 +130,61 @@ Matching model, `vessel_anomaly_v1` prompt version, and input hash are skipped
 before `AI_ENRICHMENT_LIMIT` caps new calls. Successful responses are appended
 to `analytics.vessel_ai_enrichment` with response IDs and token usage. The
 deterministic dbt anomaly calculation does not depend on OpenAI; the later
-`vessel_daily_enriched` mart joins the latest matching AI result to daily
-features and can contain vessel-days without AI content.
+`vessel_daily_enriched` mart joins only an exact current input-hash/model/prompt
+match for current top-100 candidates. Older responses remain in history. The
+newest response is selected only among matches to that exact key; a newer response
+for different inputs cannot displace a valid older response. Unmatched AI fields
+are NULL and `has_ai_enrichment = 0`. No-response, stale-response, and rank 101+
+vessel-days still appear as feature rows without current AI content.
+
+### AI freshness without OpenAI calls
+
+Apply [migration 009](../clickhouse/migrations/009_vessel_ai_input_hashes.sql) on
+existing installations (fresh bootstrap includes it). The new
+`analytics.vessel_ai_input_hashes` table is a deterministic lookup, not response
+history. `int_vessel_ai_candidates` owns the input projection and rounding used by
+both Python and dbt. Its `input_values` representation includes field names, types
+and exact hexadecimal value bytes, preserving NULLs and floating-point bits.
+Python alone computes the existing `sha256(json.dumps(..., sort_keys=True,
+default=str, separators=(",", ":")))` fingerprint. No historical hashes change.
+`int_vessel_ai_current_inputs` joins the current input values to that lookup; it
+never treats an old mapping for different values as current.
+
+After rebuilding anomaly inputs, refresh mappings before building the presentation:
+
+```sh
+# Use the configured dbt and Python environments, or execute in ais-airflow.
+dbt run --project-dir dbt --select int_vessel_ai_candidates
+python -m pipelines.ai_enrichment.enrich_vessels --refresh-input-hashes-only
+dbt run --project-dir dbt --select int_vessel_ai_current_inputs
+dbt parse --project-dir dbt
+dbt build --project-dir dbt --select vessel_daily_enriched
+dbt test --project-dir dbt --select vessel_daily_enriched
+```
+
+The hash-only command covers all currently eligible dates, makes no OpenAI calls,
+and never writes `vessel_ai_enrichment`. Normal AI execution also refreshes this
+lookup before using its unchanged response cache and API-call limit. Airflow builds
+the candidate view with anomalies and the current-input view before the final mart.
+If inputs change without a lookup refresh, the new input values do not match and
+presentation fails closed. Rebuild the materialized mart after source changes;
+its freshness reflects its last successful build.
+
+The `valid_current_ai` dbt test checks exact hashes, model/prompt, top-100 eligibility,
+and NULL AI fields on unenriched rows. To see eligible days still lacking responses:
+
+```sql
+SELECT c.activity_date AS activity_date, count() AS needing_enrichment
+FROM analytics.int_vessel_ai_current_inputs AS c
+LEFT ANTI JOIN analytics.vessel_ai_enrichment AS h
+    ON c.mmsi = h.mmsi AND c.activity_date = h.activity_date
+   AND c.current_ai_input_hash = h.input_hash
+   AND h.model = 'gpt-6-luna' AND h.prompt_version = 'vessel_anomaly_v1'
+GROUP BY c.activity_date ORDER BY c.activity_date;
+```
+
+Use the configured model/prompt if changed. This query assumes the hash lookup
+was refreshed; missing lookup entries must be refreshed before counting pending AI.
 
 For a historical run, trigger `daily_ais_pipeline` with
 `--conf '{"activity_date":"2026-09-27"}'` as shown in the Airflow guide. The
@@ -156,3 +209,31 @@ source tables must also exist; populated graph metrics require the Airflow analy
 chain. The enriched view is the current dbt replacement for the removed SQL view
 migration. `countries` is a dbt-built MergeTree table, not the old manually seeded
 ReplacingMergeTree dimension. Neither removed migration should be applied.
+
+### Port analytics activity dates
+
+`port_graph_metrics_enriched` and `port_graph_communities` expose `activity_date`
+for date filtering. It is copied from the metric export's `snapshot_date`, which
+uses the UTC **window-start date**. For example,
+`run_id = 2026-09-29T00:00:00Z` has `activity_date = 2026-09-29`.
+It is not derived from `run_id`, the export time, or the DAG execution date.
+
+`current_port_visits.activity_date` comes directly from active
+`port_visits.activity_date`. The visit writer supplies the UTC processing
+window-start date; legacy dates use completed-run metadata, never arrival time.
+Apply [migration 010 and its controlled backfill](../pipelines/port_visits/README.md#activity-date-upgrade)
+before rebuilding the views.
+
+`run_id` remains available for exact snapshot selection. Multiple runs can share
+one calendar date; community uniqueness remains `(run_id, community_id)`.
+Both views retain active metric rows (`FINAL` followed by `is_deleted = 0`), and
+historical NULL community names/labels remain NULL.
+
+```sh
+dbt parse --project-dir dbt
+dbt build --project-dir dbt --select current_port_visits port_graph_metrics_enriched port_graph_communities port_visit_activity_dates
+dbt test --project-dir dbt --select current_port_visits port_graph_metrics_enriched port_graph_communities port_visit_activity_dates
+```
+
+Tests require non-null activity dates, a consistent snapshot date per run,
+unchanged community keys, and community port totals equal to active metric rows.

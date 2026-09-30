@@ -10,7 +10,7 @@ import unittest
 from unittest.mock import Mock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
-from pipelines.graph_metrics import gds
+from pipelines.graph_metrics import gds, communities
 from pipelines.graph_metrics.export import ExportValidationError
 
 
@@ -48,6 +48,11 @@ class GdsWorkflowTests(unittest.TestCase):
             dict(port_id='B', page_rank=1.2, community_id=10, visit_run_id=METADATA['run_id']),
             dict(port_id='C', page_rank=0.6, community_id=20, visit_run_id=METADATA['run_id']),
         ]
+        for port in self.ports:
+            port['port_name'] = port['port_id']
+        groups = {c['community_id']: c for c in communities.community_rows(METADATA['run_id'], self.ports)}
+        for port in self.ports:
+            port['memberships'] = [dict(groups[port['community_id']], is_community=True)]
         self.overrides = {}
         self.events = []
         self.session = Mock()
@@ -83,6 +88,9 @@ class GdsWorkflowTests(unittest.TestCase):
             record = self.catalog[params['graph']]
         elif query == gds.EXISTS_QUERY:
             record = dict(exists=False)
+        elif query == communities.COUNTS_QUERY:
+            record = dict(communities=len({p['community_id'] for p in self.ports}),
+                          memberships=len(self.ports))
         elif query == gds.STALE_METRICS_QUERY:
             record = dict(stale_ports=len(self.ports))
         elif query == gds.PAGERANK_QUERY:

@@ -30,6 +30,12 @@ models:
           - not_null
 
   - name: vessel_daily_enriched
+    description: "Current features with AI only for an exact current top-100 input/model/prompt match; response history is retained separately."
+    data_tests:
+      - valid_current_ai
+      - unique:
+          arguments:
+            column_name: "tuple(activity_date, mmsi)"
     columns:
       - name: mmsi
         data_tests:

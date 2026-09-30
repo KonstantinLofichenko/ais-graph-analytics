@@ -113,6 +113,7 @@ class CompletedRunTests(unittest.TestCase):
                                                 param_window_end='2026-09-15 08:00:00.000000'))
         self.assertIn('FROM analytics.port_visits FINAL', visit_query.args[0])
         self.assertIn('WHERE run_id = {run_id:String}', visit_query.args[0])
+        self.assertIn('AND is_deleted = 0', visit_query.args[0])
         self.assertIn('ORDER BY mmsi, arrival_at, visit_id', visit_query.args[0])
         self.assertEqual(visit_query.args[1], {'param_run_id': METADATA['run_id']})
 

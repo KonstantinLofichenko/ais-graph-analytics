@@ -37,6 +37,7 @@ class VesselEnrichmentTests(unittest.TestCase):
                                         '--limit', '1']), \
              patch.object(enrichment, 'get_clickhouse_client', return_value=Mock()), \
              patch.object(enrichment, 'OpenAI', return_value=Mock()), \
+             patch.object(enrichment, 'refresh_input_hashes', return_value=3), \
              patch.object(enrichment, 'get_vessels', return_value=vessels), \
              patch.object(enrichment, 'get_existing_hashes', return_value=existing), \
              patch.object(enrichment, 'enrich_vessel', return_value=(Mock(), Mock())) as call, \

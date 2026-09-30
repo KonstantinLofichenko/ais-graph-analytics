@@ -74,7 +74,7 @@ def daily_ais_pipeline():
     )
     dbt_vessel_daily_anomalies = BashOperator(
         task_id='dbt_vessel_daily_anomalies',
-        bash_command='dbt run --project-dir /opt/ais/dbt --select vessel_daily_anomalies',
+        bash_command='dbt run --project-dir /opt/ais/dbt --select vessel_daily_anomalies int_vessel_ai_candidates',
     )
     ai_enrichment = BashOperator(
         task_id='ai_enrichment',
@@ -83,7 +83,7 @@ def daily_ais_pipeline():
     )
     dbt_vessel_daily_enriched = BashOperator(
         task_id='dbt_vessel_daily_enriched',
-        bash_command='dbt run --project-dir /opt/ais/dbt --select vessel_daily_enriched',
+        bash_command='dbt run --project-dir /opt/ais/dbt --select int_vessel_ai_current_inputs vessel_daily_enriched',
     )
     dbt_tests = BashOperator(
         task_id='dbt_tests',

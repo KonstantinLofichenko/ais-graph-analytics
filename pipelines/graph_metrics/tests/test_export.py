@@ -20,6 +20,11 @@ METADATA = dict(run_id='2026-09-14T08:00:00Z', window_start='2026-09-14T08:00:00
                 window_end='2026-09-15T08:00:00+00:00')
 PORTS = [dict(port_id='B', page_rank=0.75, community_id=2, visit_run_id=METADATA['run_id']),
          dict(port_id='A', page_rank=0.25, community_id=1, visit_run_id=METADATA['run_id'])]
+for port in PORTS:
+    port['port_name'] = port['port_id']
+    port['memberships'] = [dict(is_community=True, community_id=port['community_id'],
+                               run_id=METADATA['run_id'], community_name=port['port_id'],
+                               community_label=port['port_id'], port_count=1)]
 EXPORTED_AT = datetime(2026, 9, 16, 12, tzinfo=timezone.utc)
 
 
@@ -94,14 +99,14 @@ class ExportRowTests(unittest.TestCase):
         retry = build_export_rows([METADATA], PORTS, later)
         keys = lambda rows: [(r['run_id'], r['port_id'], r['snapshot_date']) for r in rows]
         self.assertEqual(keys(first), keys(retry))
-        self.assertEqual(first[0]['snapshot_date'], '2026-09-15')
+        self.assertEqual(first[0]['snapshot_date'], '2026-09-14')
         self.assertNotEqual(first[0]['exported_at'], retry[0]['exported_at'])
 
-    def test_partition_date_uses_utc_end_date_not_offset_date(self):
-        metadata = dict(METADATA, window_end='2026-09-16T01:00:00+03:00')
+    def test_partition_date_uses_utc_start_date_not_offset_date(self):
+        metadata = dict(METADATA, window_start='2026-09-15T01:00:00+03:00')
         rows = build_export_rows([metadata], PORTS, EXPORTED_AT)
-        self.assertEqual(rows[0]['snapshot_date'], '2026-09-15')
-        self.assertEqual(rows[0]['window_end'].isoformat(), '2026-09-15T22:00:00+00:00')
+        self.assertEqual(rows[0]['snapshot_date'], '2026-09-14')
+        self.assertEqual(rows[0]['window_start'].isoformat(), '2026-09-14T22:00:00+00:00')
 
     def test_zero_metrics_and_uint64_upper_bound_are_valid(self):
         ports = [dict(port_id='A', page_rank=0, community_id=0, visit_run_id=METADATA['run_id']),
@@ -160,7 +165,10 @@ class ExportOrchestrationTests(unittest.TestCase):
         self.tx.run.side_effect = self.query
         self.session.execute_read.side_effect = lambda callback, *args: callback(self.tx, *args)
         self.ch = Mock()
-        self.ch.query.return_value = '\n'.join(json.dumps({'port_id': p}) for p in ('A', 'B'))
+        self.canonical_ports = ['A', 'B']
+        self.stored_rows = []
+        self.ch.query.side_effect = self.clickhouse_query
+        self.ch.insert.side_effect = lambda table, rows, **kwargs: setattr(self, 'stored_rows', rows)
         patches = [patch('pipelines.graph_metrics.export.GraphDatabase.driver', return_value=self.driver),
                    patch('pipelines.graph_metrics.export.ClickHouse', return_value=self.ch),
                    patch('pipelines.graph_metrics.export.load_dotenv'),
@@ -170,14 +178,25 @@ class ExportOrchestrationTests(unittest.TestCase):
             self.mocks.append(patcher.start())
             self.addCleanup(patcher.stop)
 
+    def clickhouse_query(self, sql, params=None):
+        if 'analytics.ports FINAL' in sql:
+            return '\n'.join(json.dumps({'port_id': p}) for p in self.canonical_ports)
+        if 'maxOrNull' in sql:
+            return '{"latest":null,"windows":[]}'
+        return '\n'.join(json.dumps(r, default=str) for r in self.stored_rows if not r.get('is_deleted'))
+
     def query(self, query, **params):
         if query == self.gds.SNAPSHOT_QUERY:
             record = self.record
         elif query == self.export.SNAPSHOT_QUERY:
             record = dict(ports=self.ports)
         else:
-            self.fail('Unexpected query: ' + query)
-        self.assertEqual(params, {'owner': OWNER})
+            from pipelines.graph_metrics.communities import COUNTS_QUERY
+            self.assertEqual(query, COUNTS_QUERY)
+            record = dict(communities=len({p['community_id'] for p in self.ports}),
+                          memberships=len(self.ports))
+        if query in (self.gds.SNAPSHOT_QUERY, self.export.SNAPSHOT_QUERY):
+            self.assertEqual(params, {'owner': OWNER})
         result = Mock()
         result.single.return_value = deepcopy(record)
         return result
@@ -189,33 +208,70 @@ class ExportOrchestrationTests(unittest.TestCase):
         self.ports = []
 
     def test_nonempty_export_and_source_rechecks(self):
-        self.ch.query.return_value += '\n' + json.dumps({'port_id': 'INACTIVE'})
+        from pipelines.graph_metrics.communities import COUNTS_QUERY
+        self.canonical_ports.append('INACTIVE')
         with self.assertLogs('pipelines.graph_metrics.export', level='INFO') as logs:
             summary = export_metrics()
         self.assertEqual([c.args[0] for c in self.tx.run.call_args_list], [
             self.gds.SNAPSHOT_QUERY, self.export.SNAPSHOT_QUERY,
-            self.gds.SNAPSHOT_QUERY, self.gds.SNAPSHOT_QUERY])
+            self.gds.SNAPSHOT_QUERY, COUNTS_QUERY, self.gds.SNAPSHOT_QUERY])
         self.assertIn('collect(DISTINCT port)', self.export.SNAPSHOT_QUERY)
-        self.ch.query.assert_called_once_with('SELECT port_id FROM analytics.ports FINAL FORMAT JSONEachRow')
+        self.assertEqual(self.ch.query.call_count, 4)
+        self.ch.query.assert_any_call('SELECT port_id FROM analytics.ports FINAL FORMAT JSONEachRow')
         table, rows = self.ch.insert.call_args.args
         self.assertEqual(table, 'port_graph_metrics')
         self.assertEqual([r['port_id'] for r in rows], ['A', 'B'])
         self.assertEqual({r['run_id'] for r in rows}, {METADATA['run_id']})
-        self.assertEqual(summary, dict(METADATA, snapshot_date='2026-09-15', ports=2,
+        self.assertEqual([(r['community_name'], r['community_label']) for r in rows],
+                         [('A', 'A'), ('B', 'B')])
+        self.assertEqual(summary, dict(METADATA, snapshot_date='2026-09-14', ports=2,
                                       communities=2, min_page_rank=0.25, max_page_rank=0.75))
         self.assertIn('run_id=' + METADATA['run_id'], logs.output[0])
         self.ch.session.close.assert_called_once()
 
-    def test_verified_empty_returns_summary_without_clickhouse(self):
+    def test_missing_duplicate_or_stale_community_blocks_clickhouse_insert(self):
+        membership = PORTS[0]['memberships'][0]
+        for memberships in ([], [membership, membership], [dict(membership, run_id='old')],
+                            [dict(membership, community_name='wrong')]):
+            self.ports = deepcopy(PORTS)
+            self.ports[0]['memberships'] = memberships
+            with self.subTest(memberships=memberships), self.assertRaises(ExportValidationError):
+                export_metrics()
+        self.ch.insert.assert_not_called()
+
+    def test_verified_empty_reconciles_clickhouse_and_validates_zero_membership(self):
         self.empty()
         snapshots, ports = self.export.read_graph_snapshot(self.tx)
         self.assertEqual(build_export_rows(snapshots, ports, EXPORTED_AT,
                                           verified_snapshot=snapshots[0]), [])
         summary = export_metrics(snapshots[0])
-        self.assertEqual(summary, dict(METADATA, snapshot_date='2026-09-15', ports=0,
+        self.assertEqual(summary, dict(METADATA, snapshot_date='2026-09-14', ports=0,
                                       communities=0, min_page_rank=None, max_page_rank=None))
-        self.mocks[1].assert_not_called()
-        self.ch.insert.assert_not_called()
+        self.mocks[1].assert_called_once()
+        self.ch.insert.assert_called_once_with('port_graph_metrics', [], batch_size=1)
+        self.ch.session.close.assert_called_once()
+
+    def test_verified_empty_tombstones_previous_export(self):
+        self.stored_rows = [dict(r, community_name=None, community_label=None)
+                            for r in build_export_rows([METADATA], PORTS, EXPORTED_AT)]
+        self.empty()
+        summary = export_metrics()
+        self.assertEqual(summary['ports'], 0)
+        rows = self.ch.insert.call_args.args[1]
+        self.assertEqual({r['port_id'] for r in rows}, {'A', 'B'})
+        self.assertTrue(all(r['is_deleted'] == 1 for r in rows))
+        self.ch.session.close.assert_called_once()
+
+    def test_active_membership_failure_closes_client_and_returns_no_summary(self):
+        original = self.clickhouse_query
+        def query(sql, params=None):
+            if sql.startswith('SELECT port_id FROM analytics.port_graph_metrics'):
+                return '{"port_id":"WRONG"}\n{"port_id":"A"}'
+            return original(sql, params)
+        self.ch.query.side_effect = query
+        with self.assertRaisesRegex(ExportValidationError, 'membership mismatch'):
+            export_metrics()
+        self.ch.session.close.assert_called_once()
 
     def test_empty_requires_verified_state_not_just_metadata(self):
         for verified in (None, dict(METADATA, nodes=0, relationships=0)):
@@ -297,9 +353,9 @@ class ExportOrchestrationTests(unittest.TestCase):
     def test_unpinned_export_detects_publication_change_before_insert(self):
         for field, value in [('generation', 2), ('published_at', '2026-09-17T00:00:00Z')]:
             original = deepcopy(self.record)
-            def canonical_query(sql):
+            def canonical_query(sql, params=None):
                 self.record['publications'][0][field] = value
-                return '\n'.join(json.dumps({'port_id': p}) for p in ('A', 'B'))
+                return self.clickhouse_query(sql, params)
             self.ch.query.side_effect = canonical_query
             with self.assertRaisesRegex(ExportValidationError, 'graph changed'):
                 export_metrics()
@@ -307,13 +363,13 @@ class ExportOrchestrationTests(unittest.TestCase):
             self.record = original
 
     def test_unknown_port_and_insert_error_close_clickhouse(self):
-        self.ch.query.return_value = json.dumps({'port_id': 'A'})
+        self.canonical_ports = ['A']
         with self.assertRaisesRegex(ExportValidationError, 'missing from analytics.ports: B'):
             export_metrics()
         self.ch.insert.assert_not_called()
         self.ch.session.close.assert_called_once()
         self.ch.session.close.reset_mock()
-        self.ch.query.return_value += '\n' + json.dumps({'port_id': 'B'})
+        self.canonical_ports.append('B')
         self.ch.insert.side_effect = RuntimeError('insert failure')
         with self.assertRaisesRegex(RuntimeError, 'insert failure'):
             export_metrics()
@@ -325,7 +381,8 @@ class ExportOrchestrationTests(unittest.TestCase):
         self.record['snapshots'][0]['run_id'] = legacy
         for row in self.record['connections']:
             row.update(source_visit_run_id=legacy, target_visit_run_id=legacy)
-        self.ports = [dict(port, visit_run_id=legacy) for port in PORTS]
+        self.ports = [dict(port, visit_run_id=legacy,
+                           memberships=[dict(port['memberships'][0], run_id=legacy)]) for port in PORTS]
         self.assertEqual(export_metrics()['run_id'], legacy)
         self.assertEqual({r['run_id'] for r in self.ch.insert.call_args.args[1]}, {legacy})
 

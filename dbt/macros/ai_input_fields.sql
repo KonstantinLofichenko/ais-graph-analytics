@@ -1,0 +1,3 @@
+{% macro ai_input_fields() %}
+    {{ return(['mmsi', 'activity_date', 'vessel_name', 'ship_type_name', 'ship_category', 'ais_points', 'observation_hours', 'avg_speed_kn', 'max_speed_kn', 'stationary_observation_pct', 'dominant_navigational_status_name', 'dominant_status_pct', 'nav_status_change_rate_pct', 'baseline_days', 'baseline_avg_speed_kn', 'baseline_sd_speed_kn', 'speed_deviation_kn', 'speed_anomaly_threshold_kn', 'speed_anomaly', 'baseline_stationary_pct', 'baseline_sd_stationary_pct', 'stationary_deviation_pct', 'stationary_anomaly_threshold_pct', 'stationary_anomaly', 'status_speed_mismatch', 'navigation_status_inconsistent', 'anomaly_reason', 'anomaly_score', 'anomaly_rank']) }}
+{% endmacro %}

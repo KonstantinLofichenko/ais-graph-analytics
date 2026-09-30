@@ -7,6 +7,7 @@ select
     g.window_start as window_start,
     g.window_end as window_end,
     g.snapshot_date as snapshot_date,
+    g.snapshot_date as activity_date,
 
     g.port_id as port_id,
     p.name as port_name,
@@ -21,6 +22,8 @@ select
 
     g.page_rank as page_rank,
     g.community_id as community_id,
+    g.community_name as community_name,
+    g.community_label as community_label,
 
     coalesce(v.unique_vessels, 0) as unique_vessels,
     coalesce(v.visit_count, 0) as visit_count,
@@ -31,6 +34,7 @@ from
 (
     select *
     from {{ source('analytics', 'port_graph_metrics') }} final
+    where is_deleted = 0
 ) as g
 
 left join {{ source('analytics', 'ports') }} as p final
@@ -47,6 +51,7 @@ left join
         uniqExact(mmsi) as unique_vessels,
         count() as visit_count
     from {{ source('analytics', 'port_visits') }} final
+    where is_deleted = 0
     group by
         run_id,
         port_id

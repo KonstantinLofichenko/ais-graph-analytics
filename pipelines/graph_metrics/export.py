@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Export existing Neo4j Port metrics for the current managed connection snapshot."""
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import json
 import logging
 import math
@@ -15,11 +15,18 @@ from dotenv import load_dotenv
 from neo4j import GraphDatabase
 from neo4j.time import DateTime as Neo4jDateTime
 
-from pipelines.port_visits.run import ClickHouse, ROOT
+from pipelines.port_visits.run import ClickHouse, ROOT, date_string
+from pipelines.port_visits.detect import timestamp
 
 OWNER = 'port-connections-v1'
 LOGGER = logging.getLogger(__name__)
 UINT64_MAX = 2**64 - 1
+
+PORT_PROPERTIES = '''{port_id: port.portId, port_name: port.name,
+    page_rank: port.pageRank, community_id: port.communityId, visit_run_id: port.visitRunId,
+    memberships: [(port)-[:MEMBER_OF]->(c) | {is_community: c:Community,
+        community_id: c.community_id, run_id: c.run_id, community_name: c.community_name,
+        community_label: c.community_label, port_count: c.port_count}]}'''
 
 # Preserve node identity while collecting endpoints, including the empty case.
 # The durable publication and all owned edges are validated around this read.
@@ -31,9 +38,7 @@ SNAPSHOT_QUERY = """
     }
     UNWIND endpoints AS port
     WITH collect(DISTINCT port) AS ports
-    RETURN [port IN ports | {port_id: port.portId, page_rank: port.pageRank,
-                             community_id: port.communityId,
-                             visit_run_id: port.visitRunId}] AS ports
+    RETURN [port IN ports | """ + PORT_PROPERTIES + """] AS ports
 """
 
 
@@ -122,7 +127,7 @@ def build_export_rows(snapshots, ports, exported_at, *, verified_snapshot=None):
         if (isinstance(community_id, bool) or not isinstance(community_id, int)
                 or not 0 <= community_id <= UINT64_MAX):
             raise ExportValidationError(f'Port {port_id}: communityId must be a UInt64 integer')
-        rows.append(dict(metadata, snapshot_date=metadata['window_end'].date().isoformat(),
+        rows.append(dict(metadata, snapshot_date=metadata['window_start'].date().isoformat(),
                          port_id=port_id, page_rank=page_rank, community_id=community_id,
                          exported_at=exported_at))
     return sorted(rows, key=lambda row: row['port_id'])
@@ -155,6 +160,55 @@ def validate_canonical_ports(ch, rows):
                                     + ', '.join(missing))
 
 
+def publish_metric_snapshot(ch, metadata, rows, exported_at, *, before_insert):
+    """Reconcile one run's logical membership, including a validated empty export."""
+    metadata = validate_snapshot_metadata([metadata])
+    run_id = metadata['run_id']
+    expected = {row['port_id'] for row in rows}
+    if len(expected) != len(rows) or any(row['run_id'] != run_id for row in rows):
+        raise ExportValidationError('Export rows require unique port IDs within the requested run')
+    params = {'param_run_id': run_id}
+    data = ch.query('''SELECT * FROM analytics.port_graph_metrics FINAL
+                       WHERE run_id = {run_id:String} AND is_deleted = 0
+                       FORMAT JSONEachRow''', params)
+    previous = [json.loads(line) for line in data.splitlines() if line.strip()]
+    # Read corrected logical dates after a metadata-only historical backfill.
+    # FINAL retains each key's maximum version, including tombstones, so its
+    # global maximum is also the watermark across physical versions.
+    # The stored window must not change, particularly across monthly partitions.
+    data = ch.query('''SELECT toString(maxOrNull(exported_at), 'UTC') AS latest,
+                       groupUniqArray(tuple(toString(window_start, 'UTC'),
+                           toString(window_end, 'UTC'), toString(snapshot_date))) AS windows
+                       FROM analytics.port_graph_metrics FINAL WHERE run_id = {run_id:String}
+                       FORMAT JSONEachRow''', params)
+    history = json.loads(data)
+    window = (date_string(metadata['window_start']), date_string(metadata['window_end']),
+              metadata['window_start'].date().isoformat())
+    if any(tuple(stored) != window for stored in history['windows']):
+        raise ExportValidationError(f'Graph metric run {run_id} already has a different window/snapshot_date')
+    exported_at = _utc_datetime(exported_at, 'exported_at')
+    if history['latest'] is not None:
+        exported_at = max(exported_at, timestamp(history['latest']) + timedelta(microseconds=1))
+    active = [dict(row, is_deleted=0, exported_at=exported_at) for row in rows]
+    tombstones = [dict(row, is_deleted=1, exported_at=exported_at)
+                  for row in previous if row['port_id'] not in expected]
+    payload = active + tombstones
+    # Recheck Neo4j after the ClickHouse reads, immediately before publication.
+    before_insert()
+    ch.insert('port_graph_metrics', payload, batch_size=max(1, len(payload)))
+    data = ch.query('''SELECT port_id FROM analytics.port_graph_metrics FINAL
+                       WHERE run_id = {run_id:String} AND is_deleted = 0
+                       FORMAT JSONEachRow''', params)
+    actual = [json.loads(line)['port_id'] for line in data.splitlines() if line.strip()]
+    if len(actual) != len(expected) or set(actual) != expected:
+        raise ExportValidationError(f'Graph metric run {run_id} active membership mismatch: '
+                                    f'expected={len(expected)} actual={len(actual)} '
+                                    f'missing={sorted(expected - set(actual))} '
+                                    f'unexpected={sorted(set(actual) - expected)}')
+    LOGGER.info('Graph metric reconciliation: run_id=%s active_ports=%d tombstones=%d',
+                run_id, len(actual), len(tombstones))
+
+
 def export_metrics(expected_snapshot=None):
     """Read existing graph metrics and insert one validated, retry-stable snapshot."""
     load_dotenv(ROOT / '.env')
@@ -166,22 +220,27 @@ def export_metrics(expected_snapshot=None):
             snapshots, ports = session.execute_read(read_graph_snapshot, expected_snapshot)
             snapshot = snapshots[0]
             metadata = validate_snapshot_metadata(snapshots)
-            rows = build_export_rows(snapshots, ports, datetime.now(timezone.utc),
+            exported_at = datetime.now(timezone.utc)
+            rows = build_export_rows(snapshots, ports, exported_at,
                                      verified_snapshot=snapshot)
-            if rows:
-                ch = ClickHouse()
-                try:
+            from pipelines.graph_metrics.communities import validate_layer
+            communities = session.execute_read(validate_layer, snapshot, ports)
+            for row in rows:
+                community = communities[row['community_id']]
+                row.update(community_name=community['community_name'],
+                           community_label=community['community_label'])
+            ch = ClickHouse()
+            try:
+                if rows:
                     validate_canonical_ports(ch, rows)
-                    session.execute_read(_check_source_snapshot, snapshot)
-                    ch.insert('port_graph_metrics', rows)
-                finally:
-                    ch.session.close()
-            else:
-                session.execute_read(_check_source_snapshot, snapshot)
+                publish_metric_snapshot(ch, metadata, rows, exported_at,
+                    before_insert=lambda: session.execute_read(_check_source_snapshot, snapshot))
+            finally:
+                ch.session.close()
 
     summary = dict(run_id=metadata['run_id'], window_start=metadata['window_start'].isoformat(),
                    window_end=metadata['window_end'].isoformat(),
-                   snapshot_date=metadata['window_end'].date().isoformat(),
+                   snapshot_date=metadata['window_start'].date().isoformat(),
                    ports=len(rows), communities=len({row['community_id'] for row in rows}),
                    min_page_rank=min((row['page_rank'] for row in rows), default=None),
                    max_page_rank=max((row['page_rank'] for row in rows), default=None))

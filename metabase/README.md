@@ -3,15 +3,16 @@
 ## Norway Port Graph Analytics
 
 The tracked export in [`exports/norway-port-graph-analytics/`](exports/norway-port-graph-analytics/)
-contains three tabs:
+contains four tabs:
 
 | Tab | Main source and purpose |
 | --- | --- |
-| **Ports** | Country-enriched port graph metrics, PageRank tables, map, and Louvain communities. Requires the separately populated `raw.countries` source and `port_graph_metrics_enriched` dbt view. |
+| **Ports on Map** | Port map from `port_graph_metrics_enriched`, with Date, Location, and Community filters. |
+| **Ports** | PageRank tables with human-readable Community names, vessels/visits by community, and a Communities list. Uses `port_graph_metrics_enriched` and `port_graph_communities`; country enrichment requires the separately populated `raw.countries` source. |
 | **Vessels** | The `vessels` mart: totals, recent activity, categories, navigation status, last-known positions, and details. |
 | **Anomalies & AI Insights** | `vessel_daily_anomalies` and `vessel_daily_enriched` for a selected UTC day. |
 
-The third tab contains **Anomaly Vessel-Days**, **AI-Enriched Anomalies**,
+The **Anomalies & AI Insights** tab contains **Anomaly Vessel-Days**, **AI-Enriched Anomalies**,
 **Speed + Stationary Anomalies**, **Average Anomaly Severity**, **Anomalies by
 Type**, **Top 10 Anomalies**, and the **AI Insights** table. Its **Date** dashboard
 filter selects `activity_date` across these cards. The AI-Enriched Anomalies KPI
@@ -26,10 +27,27 @@ for display: `speed_and_stationary` becomes **Speed + Stationary**;
 translations are repeated across cards to demonstrate presentation-layer
 functions; the underlying ClickHouse values remain unchanged.
 
-The current exported dashboard includes fixed historical defaults for **Run ID**
-and **Date**. Review those values and source/filter mappings after import before
+The current exported dashboard includes a fixed historical default for **Date**.
+Review that value and source/filter mappings after import before
 using the dashboard for a different run. The tracked export is a configuration
 snapshot, not a provisioned database or a live screenshot.
+
+**Date** also filters the Ports tab's Top/Bottom centrality tables, community
+activity chart, and Communities list, plus the port map. For graph cards,
+`activity_date = snapshot_date`: the exporter uses the UTC processing window-start
+date. Date **2026-09-29** selects run **2026-09-29T00:00:00Z**. This aligns with
+port visits and the existing anomalies activity-day convention. Historical graph
+snapshot dates must be corrected with the documented backfill before using these
+filters on an upgraded installation.
+The current dashboard has no Run ID selector. `run_id` remains available in both
+graph models for query-builder filters, drill-down, and exact-run troubleshooting.
+Multiple runs may share a date; use `run_id` in those queries to distinguish them
+rather than treating the date as a unique graph identifier.
+
+Community names and labels come from the selected graph run. Historical NULL labels
+remain NULL; they are never filled from current communities. The activity chart
+groups by `community_name`, so unlabeled historical communities share a blank
+group. The Communities list also includes `community_id`, keeping those rows distinct.
 
 ## JSON transfer
 

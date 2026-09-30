@@ -1,0 +1,17 @@
+version: 2
+models:
+  - name: int_vessel_ai_candidates
+    description: >-
+      Current top-100 anomaly inputs, with the exact projection/rounding previously
+      used by Python. input_values serializes field names, ClickHouse types and
+      value bytes; it is a lookup key, not another hash algorithm.
+    columns:
+      - name: input_values
+        description: "Exact typed inputs used to find the canonical Python JSON/SHA-256 hash."
+  - name: int_vessel_ai_current_inputs
+    description: >-
+      Current eligible inputs whose Python hash has been registered. Missing
+      mappings intentionally hide enrichment until the hash-only refresh runs.
+    columns:
+      - name: current_ai_input_hash
+        description: "Original canonical Python input_hash for these exact current candidate values."

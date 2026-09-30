@@ -43,6 +43,13 @@ def ais_gds_metrics():
         return write(state)
 
     @task(execution_timeout=timedelta(minutes=15))
+    def build_communities(state):
+        import sys
+        sys.path.insert(0, '/opt/ais')
+        from pipelines.graph_metrics.gds import build_communities as build
+        return build(state)
+
+    @task(execution_timeout=timedelta(minutes=15))
     def validate_metrics(state):
         import sys
         sys.path.insert(0, '/opt/ais')
@@ -67,11 +74,12 @@ def ais_gds_metrics():
     pagerank = run_pagerank(projections)
     louvain = run_louvain(pagerank)
     written = write_metrics_to_neo4j(louvain)
-    validated = validate_metrics(written)
+    communities = build_communities(written)
+    validated = validate_metrics(communities)
 
     # No XCom arguments: cleanup must also run when a stage has no result.
     cleanup = cleanup_gds_projections()
-    for stage in (snapshot, projections, pagerank, louvain, written, validated):
+    for stage in (snapshot, projections, pagerank, louvain, written, communities, validated):
         stage >> cleanup
 
     # ALL_DONE cleanup must not hide a failed stage when Airflow checks leaf tasks.

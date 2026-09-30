@@ -137,8 +137,8 @@ class DailyAisPipelineTests(unittest.TestCase):
         self.assertEqual(self.dag.get_task('dbt_core').bash_command.count('--select +vessels'), 1)
         selections = {'dbt_vessel_daily_features': 'vessel_daily_features',
                       'dbt_graph_models': 'current_port_visits',
-                      'dbt_vessel_daily_anomalies': 'vessel_daily_anomalies',
-                      'dbt_vessel_daily_enriched': 'vessel_daily_enriched'}
+                      'dbt_vessel_daily_anomalies': 'vessel_daily_anomalies int_vessel_ai_candidates',
+                      'dbt_vessel_daily_enriched': 'int_vessel_ai_current_inputs vessel_daily_enriched'}
         for name, model in selections.items():
             self.assertEqual(self.dag.get_task(name).bash_command,
                              f'dbt run --project-dir /opt/ais/dbt --select {model}')

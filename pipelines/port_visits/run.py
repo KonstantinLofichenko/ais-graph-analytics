@@ -39,9 +39,9 @@ class ClickHouse:
             raise RuntimeError(f'ClickHouse query failed (HTTP {response.status_code}):\n{response.text[:2000]}')
         return response.text
 
-    def insert(self, table, rows):
-        for offset in range(0, len(rows), 1000):
-            body = '\n'.join(json.dumps(row, default=date_string, allow_nan=False) for row in rows[offset:offset+1000])
+    def insert(self, table, rows, *, batch_size=1000):
+        for offset in range(0, len(rows), batch_size):
+            body = '\n'.join(json.dumps(row, default=date_string, allow_nan=False) for row in rows[offset:offset+batch_size])
             self.query('INSERT INTO analytics.' + table + ' FORMAT JSONEachRow\n' + body)
 
     def upsert_ports(self, ports, dataset_hash, now):
@@ -145,6 +145,44 @@ def graph_snapshot(tx, ports, counts, run_id, start, end):
            start=start.isoformat(), end=end.isoformat()).consume()
 
 
+def publish_visits(ch, visits, run_id, now, *, activity_date):
+    """Replace the active logical set with insert-only versions, under the writer lock."""
+    visit_ids = {v['visit_id'] for v in visits}
+    if len(visit_ids) != len(visits):
+        raise RuntimeError('Calculated snapshot contains duplicate visit IDs')
+    params = {'param_run_id': run_id}
+    data = ch.query('''SELECT * FROM analytics.port_visits FINAL
+                       WHERE run_id = {run_id:String} AND is_deleted = 0
+                       FORMAT JSONEachRow''', params)
+    previous = [json.loads(line) for line in data.splitlines() if line.strip()]
+    # Include tombstones in this version watermark so a reappearing visit wins too.
+    # No FINAL is needed for a maximum across all physical versions.
+    watermark = ch.query('''SELECT toString(maxOrNull(updated_at), 'UTC') AS latest
+                            FROM analytics.port_visits WHERE run_id = {run_id:String}
+                            FORMAT JSONEachRow''', params)
+    latest = json.loads(watermark)['latest']
+    if latest is not None:
+        now = max(now, timestamp(latest) + timedelta(microseconds=1))
+    active = [dict(v, run_id=run_id, activity_date=activity_date,
+                   updated_at=now, is_deleted=0) for v in visits]
+    tombstones = [dict(v, updated_at=now, is_deleted=1)
+                  for v in previous if v['visit_id'] not in visit_ids]
+    rows = active + tombstones
+    # One INSERT request for this bounded snapshot, rather than separate active/
+    # deletion requests. This is not a transaction across ClickHouse and Neo4j.
+    ch.insert('port_visits', rows, batch_size=max(1, len(rows)))
+    result = ch.query('''SELECT count() AS active_visits
+                        FROM analytics.port_visits FINAL
+                        WHERE run_id = {run_id:String} AND is_deleted = 0
+                        FORMAT JSONEachRow''', params)
+    actual = int(json.loads(result)['active_visits'])
+    if actual != len(visits):
+        raise RuntimeError(f'Port-visit run {run_id} publish validation failed: '
+                           f'expected {len(visits)} active visits, FINAL active visits={actual}')
+    print(f'Port visits published: run_id={run_id} active_visits={actual} '
+          f'tombstones={len(tombstones)} updated_at={date_string(now)}')
+
+
 def publish(ch, ports, visits, counts, run_id, dataset_hash, start, end, parameters, stats):
     validate_run_window(ch, run_id, start, end)
     now = datetime.now(timezone.utc)
@@ -156,7 +194,8 @@ def publish(ch, ports, visits, counts, run_id, dataset_hash, start, end, paramet
             session.run('CREATE CONSTRAINT vessel_mmsi_unique IF NOT EXISTS FOR (v:Vessel) REQUIRE v.mmsi IS UNIQUE').consume()
             # Persist visits before exposing graph results. The run ID is reused for the same start.
             ch.upsert_ports(ports, dataset_hash, now)
-            ch.insert('port_visits', [dict(v, run_id=run_id, updated_at=now) for v in visits])
+            publish_visits(ch, visits, run_id, now,
+                           activity_date=start.astimezone(timezone.utc).date().isoformat())
             session.execute_write(graph_snapshot, ports, counts, run_id, start, end)
             ch.insert('port_visit_runs', [dict(run_id=run_id, window_start=start, window_end=end,
                       dataset_hash=dataset_hash, parameters=json.dumps(parameters, sort_keys=True),

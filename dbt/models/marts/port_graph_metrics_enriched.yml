@@ -1,0 +1,18 @@
+version: 2
+
+models:
+  - name: port_graph_metrics_enriched
+    description: >-
+      Active graph metrics read with FINAL and is_deleted = 0, enriched with
+      port and country attributes. Historical community labels remain NULL.
+    columns:
+      - name: run_id
+        description: "Unchanged snapshot identifier for lineage and exact-run filtering."
+      - name: activity_date
+        description: >-
+          Graph snapshot date, copied directly from snapshot_date. The exporter
+          uses the UTC window-start date: run 2026-09-29T00:00:00Z has
+          activity_date 2026-09-29. This is not the export time, DAG execution
+          date, or a parsed run_id. Multiple runs may share a calendar date.
+        data_tests:
+          - not_null
