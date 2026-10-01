@@ -195,6 +195,18 @@ jobs:
               < "$migration"
           done
 
+      - name: Load CI source fixtures
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          docker exec -i ais-clickhouse-ci \
+            clickhouse-client \
+              --user "$CLICKHOUSE_USER" \
+              --password "$CLICKHOUSE_PASSWORD" \
+              --multiquery \
+            < clickhouse/ci/01_countries_fixture.sql
+
       - name: Verify ClickHouse schemas
         run: |
           docker exec ais-clickhouse-ci \
