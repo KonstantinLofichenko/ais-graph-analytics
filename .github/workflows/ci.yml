@@ -287,3 +287,173 @@ jobs:
       - name: Stop isolated ClickHouse
         if: always()
         run: docker rm --force ais-clickhouse-ci || true
+
+  infrastructure:
+    name: Kafka and Neo4j smoke tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    env:
+      NEO4J_PASSWORD: ci-neo4j-password
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Build project Neo4j image
+        run: docker build --tag ais-neo4j-ci ./neo4j
+
+      - name: Start Kafka
+        run: |
+          docker run --detach \
+            --name ais-kafka-ci \
+            --hostname ais-kafka-ci \
+            --env KAFKA_LOG_DIRS=/var/lib/kafka/data \
+            --env KAFKA_NODE_ID=1 \
+            --env KAFKA_PROCESS_ROLES=broker,controller \
+            --env KAFKA_LISTENER_SECURITY_PROTOCOL_MAP=CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT \
+            --env KAFKA_LISTENERS=PLAINTEXT://:29092,CONTROLLER://:29093 \
+            --env KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://ais-kafka-ci:29092 \
+            --env KAFKA_CONTROLLER_LISTENER_NAMES=CONTROLLER \
+            --env KAFKA_CONTROLLER_QUORUM_VOTERS=1@ais-kafka-ci:29093 \
+            --env KAFKA_INTER_BROKER_LISTENER_NAME=PLAINTEXT \
+            --env KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1 \
+            --env KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR=1 \
+            --env KAFKA_TRANSACTION_STATE_LOG_MIN_ISR=1 \
+            --env KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS=0 \
+            apache/kafka:4.3.1
+
+      - name: Wait for Kafka
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          for attempt in $(seq 1 60); do
+            if docker exec ais-kafka-ci \
+              /opt/kafka/bin/kafka-broker-api-versions.sh \
+              --bootstrap-server localhost:29092 \
+              >/dev/null 2>&1; then
+              echo "Kafka is ready."
+              exit 0
+            fi
+
+            sleep 2
+          done
+
+          echo "Kafka did not become ready."
+          docker logs ais-kafka-ci || true
+          exit 1
+
+      - name: Test Kafka produce and consume
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          docker exec ais-kafka-ci \
+            /opt/kafka/bin/kafka-topics.sh \
+            --bootstrap-server localhost:29092 \
+            --create \
+            --if-not-exists \
+            --topic ais.positions \
+            --partitions 3 \
+            --replication-factor 1
+
+          printf '%s\n' \
+            '{"mmsi":257643700,"stream":"ci-smoke"}' \
+            | docker exec -i ais-kafka-ci \
+                /opt/kafka/bin/kafka-console-producer.sh \
+                --bootstrap-server localhost:29092 \
+                --topic ais.positions
+
+          message="$(
+            docker exec ais-kafka-ci \
+              /opt/kafka/bin/kafka-console-consumer.sh \
+              --bootstrap-server localhost:29092 \
+              --topic ais.positions \
+              --from-beginning \
+              --max-messages 1 \
+              --timeout-ms 10000
+          )"
+
+          echo "Consumed Kafka smoke-test message."
+          grep -q '"mmsi":257643700' <<< "$message"
+
+      - name: Start Neo4j
+        run: |
+          docker run --detach \
+            --name ais-neo4j-ci \
+            --env NEO4J_AUTH="neo4j/${NEO4J_PASSWORD}" \
+            --env HEALTHCHECK_PASSWORD="$NEO4J_PASSWORD" \
+            ais-neo4j-ci
+
+      - name: Wait for Neo4j
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          for attempt in $(seq 1 60); do
+            if docker exec ais-neo4j-ci \
+              cypher-shell \
+                -a bolt://localhost:7687 \
+                -d neo4j \
+                -u neo4j \
+                -p "$NEO4J_PASSWORD" \
+                "RETURN 1" \
+                >/dev/null 2>&1; then
+              echo "Neo4j is ready."
+              exit 0
+            fi
+
+            sleep 2
+          done
+
+          echo "Neo4j did not become ready."
+          docker logs ais-neo4j-ci || true
+          exit 1
+
+      - name: Apply Neo4j constraints
+        run: |
+          docker exec -i ais-neo4j-ci \
+            cypher-shell \
+              -a bolt://localhost:7687 \
+              -d neo4j \
+              -u neo4j \
+              -p "$NEO4J_PASSWORD" \
+              --non-interactive \
+              --fail-fast \
+            < neo4j/cypher/01_constraints.cypher
+
+      - name: Test Neo4j write and read
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          result="$(
+            docker exec ais-neo4j-ci \
+              cypher-shell \
+                -a bolt://localhost:7687 \
+                -d neo4j \
+                -u neo4j \
+                -p "$NEO4J_PASSWORD" \
+                --format plain \
+                "MERGE (n:CISmoke {id: 'ci'})
+                 RETURN n.id AS id"
+          )"
+
+          grep -q 'ci' <<< "$result"
+
+      - name: Show infrastructure logs on failure
+        if: failure()
+        run: |
+          echo "=== Kafka ==="
+          docker logs ais-kafka-ci || true
+
+          echo "=== Neo4j ==="
+          docker logs ais-neo4j-ci || true
+
+      - name: Stop smoke-test containers
+        if: always()
+        run: |
+          docker rm --force ais-kafka-ci 2>/dev/null || true
+          docker rm --force ais-neo4j-ci 2>/dev/null || true
