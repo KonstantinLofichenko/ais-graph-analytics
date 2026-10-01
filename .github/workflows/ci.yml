@@ -385,6 +385,8 @@ jobs:
             --name ais-neo4j-ci \
             --env NEO4J_AUTH="neo4j/${NEO4J_PASSWORD}" \
             --env HEALTHCHECK_PASSWORD="$NEO4J_PASSWORD" \
+            --env 'NEO4J_PLUGINS=["apoc","apoc-extended","graph-data-science"]' \
+            --env 'NEO4J_dbms_security_procedures_unrestricted=apoc.load.jdbc,apoc.load.driver,gds.*' \
             ais-neo4j-ci
 
       - name: Wait for Neo4j
