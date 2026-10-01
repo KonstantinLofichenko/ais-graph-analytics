@@ -57,7 +57,7 @@ jobs:
             --entrypoint bash ais-airflow-ci scripts/ci-unit-tests.sh
 
   producer:
-    name: Producer unit tests
+    name: Producer tests and image build
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -70,43 +70,392 @@ jobs:
           cache: pip
           cache-dependency-path: producers/ais/requirements.txt
       - run: python -m pip install -r producers/ais/requirements.txt
-      - run: python -m unittest discover -s producers/ais/tests -v
+      - name: Run producer unit tests
+        run: python -m unittest discover -s producers/ais/tests -v
+      - name: Build producer image
+        run: docker build --tag ais-producer-ci ./producers/ais
 
   dbt:
-    name: dbt parse
+    name: dbt and ClickHouse integration
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
+
     env:
-      DBT_ENV_SECRET_CLICKHOUSE_PASSWORD: ci-placeholder-not-a-secret
       CLICKHOUSE_USER: default
+      CLICKHOUSE_PASSWORD: ci-placeholder-not-a-secret
+      CLICKHOUSE_DB: ais
+
+      DBT_CLICKHOUSE_HOST: localhost
+      DBT_CLICKHOUSE_PORT: '8123'
+      DBT_ENV_SECRET_CLICKHOUSE_PASSWORD: ci-placeholder-not-a-secret
       DBT_SEND_ANONYMOUS_USAGE_STATS: 'false'
+
     steps:
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
+
       - uses: actions/setup-python@v6
         with:
           python-version: '3.11'
           cache: pip
           cache-dependency-path: dbt/requirements.txt
-      - run: python -m pip install -r dbt/requirements.txt
-      - name: Parse using the example profile without connecting to ClickHouse
+
+      - name: Install dbt
+        run: python -m pip install -r dbt/requirements.txt
+
+      - name: Create dbt profile
+        run: cp dbt/profiles.yml.example dbt/profiles.yml
+
+      - name: Start isolated ClickHouse
         run: |
-          cp dbt/profiles.yml.example dbt/profiles.yml
-          dbt parse --project-dir dbt --profiles-dir dbt --no-partial-parse
+          docker run --detach \
+            --name ais-clickhouse-ci \
+            --env CLICKHOUSE_DB="$CLICKHOUSE_DB" \
+            --env CLICKHOUSE_USER="$CLICKHOUSE_USER" \
+            --env CLICKHOUSE_PASSWORD="$CLICKHOUSE_PASSWORD" \
+            --publish 8123:8123 \
+            clickhouse/clickhouse-server:26.3
+
+      - name: Wait for ClickHouse
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          consecutive_successes=0
+
+          for attempt in $(seq 1 60); do
+            if docker exec ais-clickhouse-ci \
+              clickhouse-client \
+                --user "$CLICKHOUSE_USER" \
+                --password "$CLICKHOUSE_PASSWORD" \
+                --query "SELECT 1" >/dev/null 2>&1; then
+
+              consecutive_successes=$((consecutive_successes + 1))
+
+              if [[ "$consecutive_successes" -ge 2 ]]; then
+                echo "ClickHouse is ready."
+                exit 0
+              fi
+            else
+              consecutive_successes=0
+            fi
+
+            sleep 2
+          done
+
+          echo "ClickHouse did not become ready."
+          docker logs ais-clickhouse-ci || true
+          exit 1
+
+      - name: Apply ClickHouse initialization SQL
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          for sql_file in \
+            clickhouse/init/01_raw.sql \
+            clickhouse/init/02_port_visits.sql \
+            clickhouse/init/03_vessel_ai_enrichment.sql
+          do
+            echo "Applying $sql_file"
+
+            docker exec -i ais-clickhouse-ci \
+              clickhouse-client \
+                --user "$CLICKHOUSE_USER" \
+                --password "$CLICKHOUSE_PASSWORD" \
+                --multiquery \
+              < "$sql_file"
+          done
+
+      - name: Apply ClickHouse migrations
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          migrations=(
+            clickhouse/migrations/003_port_graph_metrics.sql
+            clickhouse/migrations/004_hais_positions.sql
+            clickhouse/migrations/005_hais_ingestion_runs.sql
+            clickhouse/migrations/006_graph_community_labels.sql
+            clickhouse/migrations/007_port_visits_tombstones.sql
+            clickhouse/migrations/008_port_graph_metrics_tombstones.sql
+            clickhouse/migrations/009_vessel_ai_input_hashes.sql
+            clickhouse/migrations/010_port_visits_activity_date.sql
+          )
+
+          for migration in "${migrations[@]}"; do
+            echo "Applying $migration"
+
+            docker exec -i ais-clickhouse-ci \
+              clickhouse-client \
+                --user "$CLICKHOUSE_USER" \
+                --password "$CLICKHOUSE_PASSWORD" \
+                --multiquery \
+              < "$migration"
+          done
+
+      - name: Load CI source fixtures
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          docker exec -i ais-clickhouse-ci \
+            clickhouse-client \
+              --user "$CLICKHOUSE_USER" \
+              --password "$CLICKHOUSE_PASSWORD" \
+              --multiquery \
+            < clickhouse/ci/01_countries_fixture.sql
+
+      - name: Verify ClickHouse schemas
+        run: |
+          docker exec ais-clickhouse-ci \
+            clickhouse-client \
+              --user "$CLICKHOUSE_USER" \
+              --password "$CLICKHOUSE_PASSWORD" \
+              --query "
+                SELECT
+                    database,
+                    name
+                FROM system.tables
+                WHERE database IN ('raw', 'analytics')
+                ORDER BY database, name
+              "
+
+      - name: Install dbt packages
+        run: dbt deps --project-dir dbt --profiles-dir dbt
+
+      - name: Parse dbt project
+        run: |
+          dbt parse \
+            --project-dir dbt \
+            --profiles-dir dbt \
+            --no-partial-parse
+
       - name: Check models required by the consolidated master
         run: |
           python - <<'PY'
           import json
           from pathlib import Path
-          manifest = json.loads(Path('dbt/target/manifest.json').read_text())
+
+          manifest = json.loads(
+              Path("dbt/target/manifest.json").read_text()
+          )
+
           required = {
-              'vessels', 'vessel_daily_features', 'current_port_visits',
-              'vessel_daily_anomalies', 'vessel_daily_enriched',
+              "vessels",
+              "vessel_daily_features",
+              "current_port_visits",
+              "vessel_daily_anomalies",
+              "vessel_daily_enriched",
+              "port_graph_metrics_enriched",
+              "port_graph_communities",
           }
+
           models = {
-              node['name'] for node in manifest['nodes'].values()
-              if node['resource_type'] == 'model'
+              node["name"]
+              for node in manifest["nodes"].values()
+              if node["resource_type"] == "model"
           }
-          assert required <= models, f'Missing master DAG models: {required - models}'
+
+          missing = required - models
+          assert not missing, f"Missing required models: {sorted(missing)}"
           PY
+
+      - name: Load dbt seeds
+        run: |
+          dbt seed \
+            --project-dir dbt \
+            --profiles-dir dbt \
+            --full-refresh
+
+      - name: Build and test required analytics models
+        run: |
+          dbt build \
+            --project-dir dbt \
+            --profiles-dir dbt \
+            --select \
+              +vessels \
+              +vessel_daily_enriched \
+              +current_port_visits \
+              +port_graph_communities
+
+      - name: Show ClickHouse logs on failure
+        if: failure()
+        run: docker logs ais-clickhouse-ci || true
+
+      - name: Stop isolated ClickHouse
+        if: always()
+        run: docker rm --force ais-clickhouse-ci || true
+
+  infrastructure:
+    name: Kafka and Neo4j smoke tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    env:
+      NEO4J_PASSWORD: ci-neo4j-password
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Build project Neo4j image
+        run: docker build --tag ais-neo4j-ci ./neo4j
+
+      - name: Start Kafka
+        run: |
+          docker run --detach \
+            --name ais-kafka-ci \
+            --hostname ais-kafka-ci \
+            --env KAFKA_LOG_DIRS=/var/lib/kafka/data \
+            --env KAFKA_NODE_ID=1 \
+            --env KAFKA_PROCESS_ROLES=broker,controller \
+            --env KAFKA_LISTENER_SECURITY_PROTOCOL_MAP=CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT \
+            --env KAFKA_LISTENERS=PLAINTEXT://:29092,CONTROLLER://:29093 \
+            --env KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://ais-kafka-ci:29092 \
+            --env KAFKA_CONTROLLER_LISTENER_NAMES=CONTROLLER \
+            --env KAFKA_CONTROLLER_QUORUM_VOTERS=1@ais-kafka-ci:29093 \
+            --env KAFKA_INTER_BROKER_LISTENER_NAME=PLAINTEXT \
+            --env KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1 \
+            --env KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR=1 \
+            --env KAFKA_TRANSACTION_STATE_LOG_MIN_ISR=1 \
+            --env KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS=0 \
+            apache/kafka:4.3.1
+
+      - name: Wait for Kafka
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          for attempt in $(seq 1 60); do
+            if docker exec ais-kafka-ci \
+              /opt/kafka/bin/kafka-broker-api-versions.sh \
+              --bootstrap-server localhost:29092 \
+              >/dev/null 2>&1; then
+              echo "Kafka is ready."
+              exit 0
+            fi
+
+            sleep 2
+          done
+
+          echo "Kafka did not become ready."
+          docker logs ais-kafka-ci || true
+          exit 1
+
+      - name: Test Kafka produce and consume
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          docker exec ais-kafka-ci \
+            /opt/kafka/bin/kafka-topics.sh \
+            --bootstrap-server localhost:29092 \
+            --create \
+            --if-not-exists \
+            --topic ais.positions \
+            --partitions 3 \
+            --replication-factor 1
+
+          printf '%s\n' \
+            '{"mmsi":257643700,"stream":"ci-smoke"}' \
+            | docker exec -i ais-kafka-ci \
+                /opt/kafka/bin/kafka-console-producer.sh \
+                --bootstrap-server localhost:29092 \
+                --topic ais.positions
+
+          message="$(
+            docker exec ais-kafka-ci \
+              /opt/kafka/bin/kafka-console-consumer.sh \
+              --bootstrap-server localhost:29092 \
+              --topic ais.positions \
+              --from-beginning \
+              --max-messages 1 \
+              --timeout-ms 10000
+          )"
+
+          echo "Consumed Kafka smoke-test message."
+          grep -q '"mmsi":257643700' <<< "$message"
+
+      - name: Start Neo4j
+        run: |
+          docker run --detach \
+            --name ais-neo4j-ci \
+            --env NEO4J_AUTH="neo4j/${NEO4J_PASSWORD}" \
+            --env HEALTHCHECK_PASSWORD="$NEO4J_PASSWORD" \
+            --env 'NEO4J_PLUGINS=["apoc","apoc-extended","graph-data-science"]' \
+            --env 'NEO4J_dbms_security_procedures_unrestricted=apoc.load.jdbc,apoc.load.driver,gds.*' \
+            ais-neo4j-ci
+
+      - name: Wait for Neo4j
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          for attempt in $(seq 1 60); do
+            if docker exec ais-neo4j-ci \
+              cypher-shell \
+                -a bolt://localhost:7687 \
+                -d neo4j \
+                -u neo4j \
+                -p "$NEO4J_PASSWORD" \
+                "RETURN 1" \
+                >/dev/null 2>&1; then
+              echo "Neo4j is ready."
+              exit 0
+            fi
+
+            sleep 2
+          done
+
+          echo "Neo4j did not become ready."
+          docker logs ais-neo4j-ci || true
+          exit 1
+
+      - name: Apply Neo4j constraints
+        run: |
+          docker exec -i ais-neo4j-ci \
+            cypher-shell \
+              -a bolt://localhost:7687 \
+              -d neo4j \
+              -u neo4j \
+              -p "$NEO4J_PASSWORD" \
+              --non-interactive \
+              --fail-fast \
+            < neo4j/cypher/01_constraints.cypher
+
+      - name: Test Neo4j write and read
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          result="$(
+            docker exec ais-neo4j-ci \
+              cypher-shell \
+                -a bolt://localhost:7687 \
+                -d neo4j \
+                -u neo4j \
+                -p "$NEO4J_PASSWORD" \
+                --format plain \
+                "MERGE (n:CISmoke {id: 'ci'})
+                 RETURN n.id AS id"
+          )"
+
+          grep -q 'ci' <<< "$result"
+
+      - name: Show infrastructure logs on failure
+        if: failure()
+        run: |
+          echo "=== Kafka ==="
+          docker logs ais-kafka-ci || true
+
+          echo "=== Neo4j ==="
+          docker logs ais-neo4j-ci || true
+
+      - name: Stop smoke-test containers
+        if: always()
+        run: |
+          docker rm --force ais-kafka-ci 2>/dev/null || true
+          docker rm --force ais-neo4j-ci 2>/dev/null || true
