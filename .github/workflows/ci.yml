@@ -115,7 +115,6 @@ jobs:
             --env CLICKHOUSE_USER="$CLICKHOUSE_USER" \
             --env CLICKHOUSE_PASSWORD="$CLICKHOUSE_PASSWORD" \
             --publish 8123:8123 \
-            --volume "$PWD/clickhouse/init:/docker-entrypoint-initdb.d:ro" \
             clickhouse/clickhouse-server:26.3
 
       - name: Wait for ClickHouse
@@ -123,7 +122,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          ready=false
+          consecutive_successes=0
 
           for attempt in $(seq 1 60); do
             if docker exec ais-clickhouse-ci \
@@ -131,18 +130,43 @@ jobs:
                 --user "$CLICKHOUSE_USER" \
                 --password "$CLICKHOUSE_PASSWORD" \
                 --query "SELECT 1" >/dev/null 2>&1; then
-              ready=true
-              break
+
+              consecutive_successes=$((consecutive_successes + 1))
+
+              if [[ "$consecutive_successes" -ge 2 ]]; then
+                echo "ClickHouse is ready."
+                exit 0
+              fi
+            else
+              consecutive_successes=0
             fi
 
             sleep 2
           done
 
-          if [[ "$ready" != "true" ]]; then
-            echo "ClickHouse did not become ready."
-            docker logs ais-clickhouse-ci
-            exit 1
-          fi
+          echo "ClickHouse did not become ready."
+          docker logs ais-clickhouse-ci || true
+          exit 1
+
+      - name: Apply ClickHouse initialization SQL
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          for sql_file in \
+            clickhouse/init/01_raw.sql \
+            clickhouse/init/02_port_visits.sql \
+            clickhouse/init/03_vessel_ai_enrichment.sql
+          do
+            echo "Applying $sql_file"
+
+            docker exec -i ais-clickhouse-ci \
+              clickhouse-client \
+                --user "$CLICKHOUSE_USER" \
+                --password "$CLICKHOUSE_PASSWORD" \
+                --multiquery \
+              < "$sql_file"
+          done
 
       - name: Apply ClickHouse migrations
         shell: bash
