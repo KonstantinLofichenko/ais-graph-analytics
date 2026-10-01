@@ -1,0 +1,188 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+  packages: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  metadata:
+    name: Validate release tag
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      major: ${{ steps.version.outputs.major }}
+      minor: ${{ steps.version.outputs.minor }}
+      image_base: ${{ steps.version.outputs.image_base }}
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Validate semantic version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          tag="$GITHUB_REF_NAME"
+
+          if [[ ! "$tag" =~ ^v([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+            echo "::error::Release tag must use stable semantic version format vMAJOR.MINOR.PATCH"
+            exit 1
+          fi
+
+          major="${BASH_REMATCH[1]}"
+          minor="${BASH_REMATCH[2]}"
+          patch="${BASH_REMATCH[3]}"
+          version="${major}.${minor}.${patch}"
+
+          repository="${GITHUB_REPOSITORY,,}"
+
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "major=$major" >> "$GITHUB_OUTPUT"
+          echo "minor=$minor" >> "$GITHUB_OUTPUT"
+          echo "image_base=ghcr.io/$repository" >> "$GITHUB_OUTPUT"
+
+          echo "Release version: $version"
+
+      - name: Verify release commit belongs to main
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          git fetch origin main
+
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::Release tag must point to a commit contained in main."
+            exit 1
+          fi
+
+  validate:
+    name: Run CI before release
+    needs: metadata
+    uses: ./.github/workflows/ci.yml
+
+  publish:
+    name: Publish ${{ matrix.image }}
+    needs:
+      - metadata
+      - validate
+
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: airflow
+            context: .
+            dockerfile: airflow/Dockerfile
+
+          - image: producer
+            context: producers/ais
+            dockerfile: producers/ais/Dockerfile
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Log in to GHCR
+        shell: bash
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" \
+            | docker login ghcr.io \
+                --username "${{ github.actor }}" \
+                --password-stdin
+
+      - name: Build image
+        shell: bash
+        env:
+          VERSION: ${{ needs.metadata.outputs.version }}
+          IMAGE_BASE: ${{ needs.metadata.outputs.image_base }}
+        run: |
+          set -euo pipefail
+
+          image="${IMAGE_BASE}-${{ matrix.image }}"
+
+          docker build \
+            --file "${{ matrix.dockerfile }}" \
+            --label "org.opencontainers.image.source=https://github.com/${GITHUB_REPOSITORY}" \
+            --label "org.opencontainers.image.revision=${GITHUB_SHA}" \
+            --label "org.opencontainers.image.version=${VERSION}" \
+            --tag "${image}:${VERSION}" \
+            "${{ matrix.context }}"
+
+      - name: Tag and push image
+        shell: bash
+        env:
+          VERSION: ${{ needs.metadata.outputs.version }}
+          MAJOR: ${{ needs.metadata.outputs.major }}
+          MINOR: ${{ needs.metadata.outputs.minor }}
+          IMAGE_BASE: ${{ needs.metadata.outputs.image_base }}
+        run: |
+          set -euo pipefail
+
+          image="${IMAGE_BASE}-${{ matrix.image }}"
+
+          tags=(
+            "${VERSION}"
+            "${MAJOR}.${MINOR}"
+            "${MAJOR}"
+            "latest"
+          )
+
+          for tag in "${tags[@]}"; do
+            if [[ "$tag" != "$VERSION" ]]; then
+              docker tag \
+                "${image}:${VERSION}" \
+                "${image}:${tag}"
+            fi
+
+            docker push "${image}:${tag}"
+          done
+
+  github-release:
+    name: Create GitHub Release
+    needs:
+      - metadata
+      - publish
+
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    env:
+      GH_TOKEN: ${{ github.token }}
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Create GitHub Release
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            echo "GitHub Release $GITHUB_REF_NAME already exists."
+          else
+            gh release create "$GITHUB_REF_NAME" \
+              --verify-tag \
+              --title "$GITHUB_REF_NAME" \
+              --generate-notes
+          fi
