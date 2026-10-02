@@ -179,6 +179,16 @@ Representative graph structures include:
 
 GDS calculations include PageRank and Louvain community detection. Community labels are deterministic and derived from representative high-PageRank ports. Graph history is exported back to ClickHouse for time-based analysis and Metabase reporting.
 
+## Graph analytics with Neo4j
+
+Neo4j stores the operational graph and graph-analysis results. Vessel visits
+connect vessels to ports, while ports are grouped into communities discovered
+through graph analytics.
+
+The example below shows vessels, visited ports, and a detected port community.
+
+![Neo4j graph analytics](docs/assets/neo4j_graph.png)
+
 ## Metabase
 
 The current dashboard is organized around three user-facing areas:
@@ -188,6 +198,13 @@ The current dashboard is organized around three user-facing areas:
 - **Anomalies & AI Insights** - deterministic anomaly candidates and valid AI enrichment.
 
 Technical snapshot identifiers remain in the storage model, but user-facing filtering is standardized around `activity_date` where applicable.
+
+## Analytics dashboard
+
+The Metabase dashboard provides an analytical view of vessel activity, port visits,
+graph metrics, communities, anomalies, and AI-enriched insights.
+
+![Metabase dashboard](docs/assets/metabase.png)
 
 ## CI
 
