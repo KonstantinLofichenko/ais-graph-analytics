@@ -89,6 +89,20 @@ class KafkaScriptTests(unittest.TestCase):
             self.assertIn('Usage:', result.stderr)
             self.assertIsNone(args)
 
+    def test_explicit_topic_deletion_uses_shared_configuration(self):
+        result, args = self.run_script('delete-kafka-topic.sh', CONFIG, ('retired.fixture',))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(args[args.index('--topic')+1], 'retired.fixture')
+        self.assertEqual(args[args.index('--bootstrap-server')+1], CONFIG['KAFKA_BOOTSTRAP_SERVERS'])
+        self.assertIn('--delete', args)
+        self.assertIn('--if-exists', args)
+
+    def test_topic_deletion_requires_explicit_non_source_topic(self):
+        for arguments in ((), ('',), ('one', 'two'), (CONFIG['KAFKA_TOPIC'],)):
+            result, args = self.run_script('delete-kafka-topic.sh', CONFIG, arguments)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIsNone(args)
+
     def test_missing_settings_fail_before_topic_command(self):
         for name in ('KAFKA_BOOTSTRAP_SERVERS', 'KAFKA_TOPIC'):
             config = dict(CONFIG)
