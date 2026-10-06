@@ -71,7 +71,8 @@ services:
     profiles: ["live"]
     env_file: .env
     environment:
-      KAFKA_BOOTSTRAP_SERVERS: ais-kafka:29092
+      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS:?KAFKA_BOOTSTRAP_SERVERS is required}
+      KAFKA_TOPIC: ${KAFKA_TOPIC:?KAFKA_TOPIC is required}
       AIS_MESSAGE_LIMIT: "${AIS_MESSAGE_LIMIT:-}"
     depends_on:
       ais-kafka:
@@ -119,7 +120,7 @@ services:
       ais-kafka:
         condition: service_healthy
     environment:
-      KSQL_BOOTSTRAP_SERVERS: ais-kafka:29092
+      KSQL_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS:?KAFKA_BOOTSTRAP_SERVERS is required}
       KSQL_LISTENERS: http://0.0.0.0:8088
       KSQL_KSQL_SERVICE_ID: ais_ksqldb
       KSQL_KSQL_LOG4J_ROOT_LOGLEVEL: INFO
@@ -141,7 +142,7 @@ services:
       ais-kafka:
         condition: service_healthy
     environment:
-      CONNECT_BOOTSTRAP_SERVERS: ais-kafka:29092
+      CONNECT_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS:?KAFKA_BOOTSTRAP_SERVERS is required}
       CONNECT_REST_ADVERTISED_HOST_NAME: kafka-connect
       CONNECT_REST_PORT: 8083
       CONNECT_GROUP_ID: ais-connect-cluster
@@ -179,7 +180,7 @@ services:
         condition: service_healthy
     environment:
       KAFKA_CLUSTERS_0_NAME: local
-      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: ais-kafka:29092
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: ${KAFKA_BOOTSTRAP_SERVERS:?KAFKA_BOOTSTRAP_SERVERS is required}
       KAFKA_CLUSTERS_0_KSQLDBSERVER: http://ksqldb-server:8088
       KAFKA_CLUSTERS_0_KAFKACONNECT_0_NAME: local-connect
       KAFKA_CLUSTERS_0_KAFKACONNECT_0_ADDRESS: http://kafka-connect:8083
@@ -260,7 +261,66 @@ services:
       - clickhouse
     networks:
       - ais-network
-    
+
+  flink-jobmanager:
+    build:
+      context: ./flink
+      dockerfile: Dockerfile
+    image: ais-flink:2.2.1
+    container_name: ais-flink-jobmanager
+    profiles: ["streaming"]
+    command: jobmanager
+    ports:
+      - "8082:8081"
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS:?KAFKA_BOOTSTRAP_SERVERS is required}
+      KAFKA_TOPIC: ${KAFKA_TOPIC:?KAFKA_TOPIC is required}
+      FLINK_SINK_TOPIC: ${FLINK_SINK_TOPIC:?FLINK_SINK_TOPIC is required}
+      FLINK_ENRICHED_TOPIC: ${FLINK_ENRICHED_TOPIC:?FLINK_ENRICHED_TOPIC is required}
+      FLINK_REFERENCE_DIR: ${FLINK_REFERENCE_DIR:?FLINK_REFERENCE_DIR is required}
+      FLINK_ENRICHMENT_GROUP_ID: ${FLINK_ENRICHMENT_GROUP_ID:?FLINK_ENRICHMENT_GROUP_ID is required}
+      FLINK_PROPERTIES: |
+        jobmanager.rpc.address: flink-jobmanager
+        parallelism.default: 1
+    volumes:
+      - ./flink/sql:/opt/flink/sql:ro
+      - ./flink/jobs:/opt/flink/jobs:ro
+      - ./dbt/seeds:${FLINK_REFERENCE_DIR:?FLINK_REFERENCE_DIR is required}:ro
+    depends_on:
+      ais-kafka:
+        condition: service_healthy
+    networks:
+      - ais-network
+
+  flink-taskmanager:
+    build:
+      context: ./flink
+      dockerfile: Dockerfile
+    image: ais-flink:2.2.1
+    container_name: ais-flink-taskmanager
+    profiles: ["streaming"]
+    command: taskmanager
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS:?KAFKA_BOOTSTRAP_SERVERS is required}
+      KAFKA_TOPIC: ${KAFKA_TOPIC:?KAFKA_TOPIC is required}
+      FLINK_SINK_TOPIC: ${FLINK_SINK_TOPIC:?FLINK_SINK_TOPIC is required}
+      FLINK_ENRICHED_TOPIC: ${FLINK_ENRICHED_TOPIC:?FLINK_ENRICHED_TOPIC is required}
+      FLINK_REFERENCE_DIR: ${FLINK_REFERENCE_DIR:?FLINK_REFERENCE_DIR is required}
+      FLINK_ENRICHMENT_GROUP_ID: ${FLINK_ENRICHMENT_GROUP_ID:?FLINK_ENRICHMENT_GROUP_ID is required}
+      FLINK_PROPERTIES: |
+        jobmanager.rpc.address: flink-jobmanager
+        taskmanager.numberOfTaskSlots: 2
+        parallelism.default: 1
+    volumes:
+      - ./dbt/seeds:${FLINK_REFERENCE_DIR:?FLINK_REFERENCE_DIR is required}:ro
+    depends_on:
+      flink-jobmanager:
+        condition: service_started
+      ais-kafka:
+        condition: service_healthy
+    networks:
+      - ais-network
+
 networks:
   ais-network:
     name: ais-network

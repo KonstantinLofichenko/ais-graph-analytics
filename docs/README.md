@@ -403,8 +403,7 @@ docker compose logs --tail 100 neo4j
 Kafka topic inspection:
 
 ```bash
-docker exec ais-kafka /opt/kafka/bin/kafka-topics.sh \
-  --bootstrap-server ais-kafka:29092 --list
+./scripts/status.sh
 ```
 
 Logical ClickHouse validation should prefer `FINAL` where ReplacingMergeTree replacement semantics matter.

@@ -84,6 +84,11 @@ mkdir -p data/hais
 
 Set at least `NEO4J_PASSWORD` and `CLICKHOUSE_PASSWORD` in `.env`. For live AIS ingestion, also configure the BarentsWatch credentials. Keep secrets out of Git.
 
+Kafka clients use `KAFKA_BOOTSTRAP_SERVERS` and `KAFKA_TOPIC`; the optional PyFlink
+smoke job also requires `FLINK_SINK_TOPIC`. Use the Docker-internal broker address
+from `.env.example` for Compose. See [Flink configuration and smoke validation](flink/README.md)
+for host-side overrides and job commands.
+
 Create the local Kafka Connect configuration:
 
 ```bash

@@ -44,9 +44,9 @@ for sql_file in "${migrations[@]}" neo4j/cypher/01_constraints.cypher; do
   [[ -r "$sql_file" ]] || fail "Cannot read $sql_file"
 done
 
-printf 'Creating/verifying Kafka topic ais.positions...\n'
-if ! sh scripts/create-kafka-topic.sh >/dev/null 2>&1; then
-  fail 'Kafka topic setup failed; check the running broker.'
+printf 'Creating/verifying the configured Kafka topic...\n'
+if ! sh scripts/create-kafka-topic.sh >/dev/null; then
+  fail 'Kafka topic setup failed; check KAFKA_BOOTSTRAP_SERVERS, KAFKA_TOPIC, and the running broker.'
 fi
 
 for migration in "${migrations[@]}"; do
