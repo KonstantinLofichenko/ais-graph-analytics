@@ -7,6 +7,8 @@ import os
 import re
 
 from common.reference_data import ReferenceData
+from common.checkpointing import configure_checkpoints, with_uid
+from pyflink.datastream.connectors.base import DeliveryGuarantee
 
 from pyflink.common import SimpleStringSchema, Types, WatermarkStrategy
 from pyflink.datastream import StreamExecutionEnvironment
@@ -178,6 +180,7 @@ def main():
         raise SystemExit("FLINK_GAP_TOPIC must differ from FLINK_GAP_SOURCE_TOPIC")
     env = StreamExecutionEnvironment.get_execution_environment()
     env.set_parallelism(1)
+    configure_checkpoints(env, 'gap')
     source = (
         KafkaSource.builder().set_bootstrap_servers(broker).set_topics(source_topic)
         .set_group_id(group_id).set_starting_offsets(KafkaOffsetsInitializer.latest())
@@ -185,18 +188,19 @@ def main():
     )
     sink = (
         KafkaSink.builder().set_bootstrap_servers(broker)
+        .set_delivery_guarantee(DeliveryGuarantee.AT_LEAST_ONCE)
         .set_record_serializer(KafkaRecordSerializationSchema.builder().set_topic(sink_topic)
                                .set_value_serialization_schema(SimpleStringSchema()).build())
         .build()
     )
-    (
-        env.from_source(source, WatermarkStrategy.no_watermarks(), source_topic)
+    processed = (
+        with_uid(env.from_source(source, WatermarkStrategy.no_watermarks(), source_topic), 'gap-source')
         .map(parse_event, output_type=Types.PICKLED_BYTE_ARRAY())
         .filter(lambda event: event is not None)
         .key_by(event_key, key_type=Types.LONG())
         .process(GapDetector(timeout, reference_dir), output_type=Types.STRING())
-        .sink_to(sink)
     )
+    with_uid(processed, 'gap-detector').sink_to(sink).uid('gap-sink')
     env.execute(JOB_NAME)
 
 

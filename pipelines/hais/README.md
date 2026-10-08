@@ -23,7 +23,7 @@ Move/copy any existing sample into the shared host directory before using this D
 Its original successful audit record is still recognized regardless of location.
 
 For installation, migration application, Airflow startup, and the first trigger,
-use [quickstart step 12](../../README.md#12-ingest-hais-and-load-canonical-ais)
+use [quickstart step 12](../../README.md#5-historical-hais-ingestion)
 after completing bootstrap. Bootstrap applies migrations `004_hais_positions.sql`
 and `005_hais_ingestion_runs.sql`; the audit table requires
 `row_count Nullable(UInt64)`. The DAG creates no tables. See

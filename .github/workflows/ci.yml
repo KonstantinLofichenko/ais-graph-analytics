@@ -78,6 +78,30 @@ jobs:
       - name: Build producer image
         run: docker build --tag ais-producer-ci ./producers/ais
 
+  clickhouse-kafka:
+    name: Derived Kafka streams to ClickHouse
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Start Kafka and ClickHouse with automatic bootstrap
+        run: |
+          cp .env.example .env
+          docker compose up -d ais-kafka clickhouse
+      - name: Verify analytics ownership, vessel names and idempotent migration
+        run: python -u clickhouse/tests/integration_derived.py
+      - name: Show ingestion service logs on failure
+        if: failure()
+        run: docker compose logs ais-kafka clickhouse
+      - name: Clean isolated CI stack
+        if: always()
+        run: docker compose down --volumes
+
   dbt:
     name: dbt and ClickHouse integration
     runs-on: ubuntu-latest
@@ -159,7 +183,8 @@ jobs:
           for sql_file in \
             clickhouse/init/01_raw.sql \
             clickhouse/init/02_port_visits.sql \
-            clickhouse/init/03_vessel_ai_enrichment.sql
+            clickhouse/init/03_vessel_ai_enrichment.sql \
+            clickhouse/init/04_flink_derived.sql
           do
             echo "Applying $sql_file"
 

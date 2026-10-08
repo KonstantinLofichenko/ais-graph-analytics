@@ -37,12 +37,14 @@ class GapDetectorTests(unittest.TestCase):
         modules = {name: MagicMock() for name in (
             'pyflink', 'pyflink.common', 'pyflink.datastream',
             'pyflink.datastream.functions', 'pyflink.datastream.state',
-            'pyflink.datastream.connectors', 'pyflink.datastream.connectors.kafka')}
+            'pyflink.datastream.connectors', 'pyflink.datastream.connectors.base',
+            'pyflink.datastream.checkpoint_config', 'pyflink.datastream.connectors.kafka')}
         modules['pyflink.datastream.functions'].KeyedProcessFunction = type('KeyedProcessFunction', (), {})
         spec = importlib.util.spec_from_file_location('gap_test', ROOT / 'flink/jobs/ais_gap_detector.py')
         self.job = importlib.util.module_from_spec(spec)
         with patch.dict(sys.modules, modules):
             spec.loader.exec_module(self.job)
+        self.job.configure_checkpoints = MagicMock()
         self.references = ReferenceData(REFERENCE_DIR)
 
     def test_valid_mmsi(self):
@@ -227,6 +229,9 @@ class GapDetectorTests(unittest.TestCase):
     def test_kafka_configuration_is_environment_driven(self):
         with patch.dict(os.environ, CONFIG, clear=True):
             self.job.main()
+        self.job.configure_checkpoints.assert_called_once_with(
+            self.job.StreamExecutionEnvironment.get_execution_environment.return_value, 'gap')
+        self.job.KafkaSink.builder.return_value.set_bootstrap_servers.return_value.set_delivery_guarantee.assert_called_once_with(self.job.DeliveryGuarantee.AT_LEAST_ONCE)
         source = self.job.KafkaSource.builder.return_value
         source.set_bootstrap_servers.assert_called_once_with(CONFIG['KAFKA_BOOTSTRAP_SERVERS'])
         topics = source.set_bootstrap_servers.return_value.set_topics

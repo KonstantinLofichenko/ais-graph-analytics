@@ -337,6 +337,23 @@
               275
             ],
             1
+          ],
+          [
+            "=",
+            {
+              "lib/uuid": "3829479b-14c6-4d50-9b5b-4b76e59fd2c7"
+            },
+            [
+              "field",
+              {
+                "base-type": "type/Date",
+                "effective-type": "type/Date",
+                "join-alias": "Vessel Daily Anomalies - Mmsi",
+                "lib/uuid": "25fb61ba-a6b4-41eb-9b92-c1de2157623b"
+              },
+              277
+            ],
+            "2026-10-07"
           ]
         ],
         "joins": [
@@ -457,6 +474,9 @@
       "[\"name\",\"baseline_stationary_pct\"]": {
         "column_title": "Baseline Stationary Pct",
         "decimals": 2
+      },
+      "[\"name\",\"mmsi\"]": {
+        "column_title": "MMSI"
       },
       "[\"name\",\"stationary_observation_pct\"]": {
         "decimals": 2

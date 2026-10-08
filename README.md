@@ -5,31 +5,62 @@
 
 AIS Graph Analytics is a portfolio data-engineering platform for live and historical AIS vessel data. It combines streaming ingestion, batch orchestration, analytical modeling, graph analytics, AI enrichment, dashboarding, automated testing, and versioned container releases in one reproducible project.
 
-The project is intentionally multi-engine: ClickHouse keeps durable event history and analytical tables, Neo4j models vessel/port relationships and graph metrics, Kafka carries the live AIS stream, dbt owns analytical transformations, and Airflow coordinates daily processing.
+The project is intentionally multi-engine: ClickHouse keeps durable event history and analytical tables, Neo4j models vessel/port relationships and graph metrics, Kafka carries the live AIS stream, dbt owns analytical transformations, Airflow coordinates daily processing, and PyFlink computes near-real-time features and gap events.
 
 ## Architecture
 
 ![AIS Graph Analytics architecture](docs/assets/architecture.png)
 
-### Main data paths
+[Zoomable SVG](docs/assets/architecture.svg) ·
+[Diagram source and regeneration](docs/assets/README.md) ·
+[Detailed architecture](docs/README.md#2-architecture)
+
+### Three live paths
+
+All live branches start with **BarentsWatch AIS → Python producer → Kafka
+`ais.positions`**:
+
+| Path | Processing and destination |
+| --- | --- |
+| Raw ingestion | ClickHouse Kafka Engine/materialized view → `raw.ais_positions`, the canonical historical event store. |
+| Stateful stream processing | PyFlink gap detector → `ais.vessel.gaps` → `analytics.ais_vessel_gap_events`; PyFlink multi-window features → `ais.vessel.features` → `analytics.ais_vessel_features`. Both reach ClickHouse through Kafka Engine/materialized views. |
+| Graph analytics | Kafka Connect → current Neo4j Vessel nodes; analytical port visits build `VISITED`/`CONNECTED_TO`, GDS PageRank/Louvain and `MEMBER_OF` communities → ClickHouse graph snapshots/dbt → BI, ML and AI inputs. |
+
+ClickHouse retains history, Flink computes stateful events/windows, and Neo4j
+complements the warehouse with current relationships and graph metrics. Metabase
+reads **persistent ClickHouse tables**, including the two near-real-time tabs;
+Kafka Engine tables and materialized views are ingestion infrastructure.
+`activity_date` is derived in ClickHouse for storage/reporting, while live cards
+use latest completed windows or rolling UTC time ranges.
+
+### Supporting state recovery
+
+Both PyFlink jobs checkpoint every 60 seconds to host-mounted
+`./flink/checkpoints` (`/opt/flink/checkpoints` in containers). Recovery restores
+Kafka offsets, gap ValueState/timers and partial feature windows. This gives
+local-host durability across container restarts; it is not distributed HA or
+protection from host/disk loss. EXACTLY_ONCE checkpoint state does not make the
+Kafka/ClickHouse output exactly-once: replay can duplicate output records. See
+[Flink configuration and recovery](flink/README.md#durable-checkpoints-and-restore).
+
+### Historical ingestion: current and planned
+
+The existing path loads HAIS GeoParquet through Airflow into `raw.hais_positions`,
+then dbt normalizes and loads canonical `raw.ais_positions` history.
+The **planned, undeployed lakehouse extension** is separate:
 
 ```text
-Live AIS
-BarentsWatch -> Python producer -> Kafka -> ClickHouse raw history
-                                      -> Kafka Connect -> Neo4j current vessel state
-
-Historical AIS
-HAIS GeoParquet -> Airflow -> ClickHouse raw.hais_positions
-                           -> dbt normalization -> raw.ais_positions
-
-Analytics
-raw.ais_positions -> dbt marts -> anomaly candidates -> AI enrichment
-                  -> port visits -> Neo4j/GDS -> graph snapshots -> Metabase
+HAIS GeoParquet → Airflow → PySpark → Iceberg → Trino
 ```
+
+Flink continuously processes streams; this future batch path uses Airflow for
+orchestration, PySpark for historical processing, Iceberg for lakehouse tables and
+Trino for SQL queries. [Detailed historical architecture](docs/README.md#22-historical-path).
 
 ## What the project demonstrates
 
 - **Streaming ingestion:** BarentsWatch AIS -> Kafka -> ClickHouse and Neo4j.
+- **Stateful stream processing:** MMSI gap timers and sliding feature windows with durable checkpoint recovery.
 - **Historical ingestion:** HAIS GeoParquet files loaded through Airflow into a canonical ClickHouse event model.
 - **Analytical engineering:** dbt staging, marts, tests, seeds, and ClickHouse-specific modeling.
 - **Graph analytics:** vessel/port graph processing with Neo4j, APOC, PageRank, Louvain communities, and graph snapshot export.
@@ -43,6 +74,7 @@ raw.ais_positions -> dbt marts -> anomaly candidates -> AI enrichment
 | Area | Technology |
 | --- | --- |
 | Streaming | Apache Kafka 4.3.1, Kafka Connect, ksqlDB, Kafbat UI |
+| Stateful stream processing | PyFlink 2.2.1 DataStream API |
 | Storage / analytics | ClickHouse 26.3 |
 | Transformation | dbt Core 1.12.5, dbt-clickhouse 1.10.3 |
 | Orchestration | Apache Airflow |
@@ -59,6 +91,8 @@ raw.ais_positions -> dbt marts -> anomaly candidates -> AI enrichment
 | --- | --- |
 | `raw.ais_positions` | Canonical AIS event history from live and historical sources |
 | `raw.hais_positions` | Source-faithful HAIS historical landing table |
+| `analytics.ais_vessel_features` | Flink-derived feature history by MMSI, window size and UTC boundaries |
+| `analytics.ais_vessel_gap_events` | Flink-derived silence detection/recovery lifecycle history |
 | `analytics.vessels` | Vessel identity and current analytical state |
 | `analytics.vessel_daily_features` | Daily movement, speed, stationary, and navigation-status features |
 | `analytics.vessel_daily_anomalies` | Deterministic daily anomaly candidates |
@@ -107,7 +141,9 @@ docker compose up -d --wait --wait-timeout 300
 
 Core Compose services include Kafka, Kafka Connect, ksqlDB, Kafbat UI, ClickHouse, and the customized Neo4j image.
 
-`bootstrap.sh` creates/verifies the Kafka topic, applies additive ClickHouse migrations `003` through `010`, applies Neo4j constraints, and creates/updates the Kafka Connect sink.
+`bootstrap.sh` creates/verifies the Kafka topic, applies additive ClickHouse migrations `003` through `010` and the lossless derived-stream migration/bootstrap, applies Neo4j constraints, and creates/updates the Kafka Connect sink.
+
+Flink-derived feature windows and gap events are also ingested through Kafka Engine tables into persistent `analytics.ais_vessel_features` and `analytics.ais_vessel_gap_events` tables; see [ClickHouse streaming ingestion](clickhouse/README.md) for automatic bootstrap, schemas, monitoring, and example queries.
 
 ### 3. Optional profiles
 
@@ -120,6 +156,9 @@ docker compose --profile batch up -d --build --wait --wait-timeout 300 airflow
 
 # Metabase
 docker compose --profile analytics up -d metabase
+
+# Both PyFlink jobs, with checkpoint storage and automatic submission
+docker compose --profile streaming up -d
 ```
 
 ### 4. Configure dbt
@@ -149,24 +188,26 @@ data/hais/hais_2026-09-01.snappy.parquet
 
 Trigger historical ingestion for the required date range, then normalize/load it into the canonical `raw.ais_positions` table. Historical file dates are inclusive; canonical-load end dates are exclusive UTC boundaries.
 
-See [Detailed project documentation](docs/README.md) for the complete sequence and validation notes.
+Follow the [HAIS ingestion guide](pipelines/hais/README.md) and then the
+[dbt canonical-load workflow](dbt/README.md). The
+[detailed project documentation](docs/README.md) explains architecture and operations.
 
 ## Daily orchestration
 
 The master Airflow DAG is `daily_ais_pipeline` and is scheduled at **02:00 UTC**. It also supports an explicit `dag_run.conf.activity_date` for controlled reruns/backfills.
 
-At a high level the daily flow coordinates:
+The daily master runs these tasks in order:
 
 ```text
-source/canonical readiness
-        -> dbt analytics
-        -> vessel anomaly selection
-        -> AI enrichment
-        -> port visits
-        -> Neo4j graph refresh / GDS
-        -> graph metrics export
-        -> downstream dashboard-ready tables
+resolve_activity_date -> dbt_core -> dbt_vessel_daily_features
+  -> ais_port_visits -> ais_gds_metrics -> ais_graph_metrics_export
+  -> dbt_graph_models -> dbt_vessel_daily_anomalies -> ai_enrichment
+  -> dbt_vessel_daily_enriched -> dbt_tests
 ```
+
+The activity day is captured once; graph child DAGs must be unpaused. See the
+[Airflow guide](airflow/README.md#consolidated-daily-ais-pipeline) for retries,
+historical runs and graph writer sequencing.
 
 AI calls are outside the database. The enrichment pipeline uses deterministic input hashing and exact cache lookup so unchanged inputs do not generate duplicate API calls. Historical AI responses remain available for auditability.
 
@@ -196,11 +237,17 @@ The example below shows vessels, visited ports, and a detected port community.
 
 ## Metabase
 
-The current dashboard is organized around three user-facing areas:
+The dashboard contains six tabs:
 
-- **Ports** - port activity, connections, PageRank, and communities.
-- **Vessels** - vessel identity, type/category, activity, and data-quality context.
-- **Anomalies & AI Insights** - deterministic anomaly candidates and valid AI enrichment.
+- **Ports on Map** — port map and a recovered-gap vessel ranking.
+- **Ports** — port activity, PageRank and communities.
+- **Vessels** — vessel identity, categories, navigation status and last positions.
+- **Anomalies & AI Insights** — deterministic anomaly candidates and AI enrichment.
+- **Near Real-Time Vessel Analytics** — latest Flink windows, activity and speed metrics.
+- **Near Real-Time AIS Gap Monitoring** — detected/recovered gaps and silence durations.
+
+The [dashboard guide and refreshed 31-card export](metabase/README.md) describe
+sources, window selection, rolling UTC ranges and current filter mappings.
 
 Technical snapshot identifiers remain in the storage model, but user-facing filtering is standardized around `activity_date` where applicable.
 
@@ -211,9 +258,12 @@ graph metrics, communities, anomalies, and AI-enriched insights.
 
 ![Metabase dashboard](docs/assets/metabase.png)
 
+This illustrative screenshot predates the two near-real-time tabs. Use the
+[current dashboard guide and export](metabase/README.md) for the six-tab layout.
+
 ## CI
 
-`.github/workflows/ci.yml` runs five independent jobs:
+`.github/workflows/ci.yml` runs six independent jobs:
 
 | Job | What it validates |
 | --- | --- |
@@ -221,6 +271,7 @@ graph metrics, communities, anomalies, and AI-enriched insights.
 | Pipelines | Airflow image build plus isolated pipeline/DAG unit tests |
 | Producer | Python unit tests plus AIS producer image build |
 | dbt + ClickHouse | Fresh ClickHouse, init SQL, migrations, deterministic CI fixture, dbt seed/build/tests |
+| ClickHouse + Kafka | Derived-topic ingestion, analytics ownership, vessel names and safe idempotent migration |
 | Kafka + Neo4j | Kafka produce/consume smoke test and customized Neo4j startup/write/read/constraints |
 
 CI does not call BarentsWatch, OpenAI, Airbyte, production Metabase, or a developer workstation.
@@ -261,6 +312,8 @@ docker pull ghcr.io/konstantinlofichenko/ais-graph-analytics-producer:latest
 docker pull ghcr.io/konstantinlofichenko/ais-graph-analytics-neo4j:latest
 ```
 
+The PyFlink image is built locally and is not currently published by the release workflow.
+
 Third-party infrastructure images such as Kafka, ClickHouse, Metabase, and ksqlDB are referenced from their upstream registries and are not republished as project packages.
 
 ## Repository layout
@@ -268,9 +321,10 @@ Third-party infrastructure images such as Kafka, ClickHouse, Metabase, and ksqlD
 ```text
 airflow/                 Airflow image, DAGs, and orchestration helpers
 airbyte/                 Optional source/destination connector configuration
-clickhouse/init/         Fresh-volume initialization SQL
+clickhouse/init/         Initialization and lossless derived-stream migration
 clickhouse/migrations/   Additive schema/data migrations
 dbt/                     Sources, seeds, staging models, marts, macros, tests
+flink/                   PyFlink jobs, submitter, checkpoints, recovery tests
 metabase/                Dashboard/card export/import assets
 neo4j/                   Custom image, Cypher, constraints, GDS, connector config
 pipelines/               Python processing pipelines
@@ -299,7 +353,11 @@ For a production implementation, use persistent detector state or detect physica
 
 Start with:
 
-- [Detailed project documentation](docs/README.md)
+- [Detailed project documentation](docs/README.md) and [Russian guide](docs/README.ru.md)
+- [English PDF](docs/AIS-Graph-Analytics-ENG.pdf) and [Russian PDF](docs/AIS-Graph-Analytics-RUS.pdf)
+- [Flink operations and recovery](flink/README.md)
+- [ClickHouse streaming ingestion](clickhouse/README.md)
+- [Metabase dashboard and exports](metabase/README.md)
 - `airflow/README.md` - orchestration and Airflow usage
 - `dbt/README.md` - dbt profiles, models, and loading procedures
 - `pipelines/port_visits/README.md` - port-visit logic
@@ -308,6 +366,6 @@ Start with:
 
 ## Project status
 
-The current platform includes working live/historical ingestion, ClickHouse/dbt analytics, Neo4j graph processing, AI enrichment, Metabase dashboards, automated CI, semantic releases, and GHCR publishing.
+The current platform includes working live/historical ingestion, durable PyFlink streaming, ClickHouse/dbt analytics, Neo4j graph processing, AI enrichment, Metabase dashboards, automated CI, semantic releases, and GHCR publishing.
 
-Planned learning extensions such as Flink streaming and an Iceberg/MinIO/Trino lakehouse are intentionally **not** part of the current runtime yet.
+Planned learning extensions such as an Iceberg/MinIO/Trino lakehouse are intentionally **not** part of the current runtime yet.

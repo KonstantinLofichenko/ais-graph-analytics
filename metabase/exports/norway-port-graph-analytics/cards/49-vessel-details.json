@@ -135,6 +135,24 @@
             207
           ]
         ],
+        "filters": [
+          [
+            "=",
+            {
+              "lib/uuid": "c54f9668-5369-4961-b1b4-3f7ccc3acf19"
+            },
+            [
+              "field",
+              {
+                "base-type": "type/DateTimeWithLocalTZ",
+                "effective-type": "type/DateTimeWithLocalTZ",
+                "lib/uuid": "bc144b4d-5982-48dd-9b3e-5e2d0799f708"
+              },
+              162
+            ],
+            "2026-09-30"
+          ]
+        ],
         "lib/type": "mbql.stage/mbql",
         "order-by": [
           [
@@ -166,14 +184,78 @@
   "type": "question",
   "visualization_settings": {
     "column_settings": {
+      "[\"name\",\"ais_message_count\"]": {
+        "column_title": "AIS Message Count"
+      },
       "[\"name\",\"first_seen\"]": {
         "date_abbreviate": true
       },
       "[\"name\",\"last_seen\"]": {
         "date_abbreviate": true
+      },
+      "[\"name\",\"mmsi\"]": {
+        "column_title": "MMSI"
       }
     },
     "table.cell_column": "has_unknown_ship_type",
+    "table.columns": [
+      {
+        "enabled": true,
+        "name": "vessel_name"
+      },
+      {
+        "enabled": true,
+        "name": "ship_type_name"
+      },
+      {
+        "enabled": true,
+        "name": "ship_category"
+      },
+      {
+        "enabled": true,
+        "name": "last_navigational_status_name"
+      },
+      {
+        "enabled": true,
+        "name": "avg_speed_kn"
+      },
+      {
+        "enabled": true,
+        "name": "max_speed_kn"
+      },
+      {
+        "enabled": true,
+        "name": "last_speed_kn"
+      },
+      {
+        "enabled": true,
+        "name": "first_seen"
+      },
+      {
+        "enabled": true,
+        "name": "last_seen"
+      },
+      {
+        "enabled": true,
+        "name": "ais_message_count"
+      },
+      {
+        "enabled": true,
+        "name": "name_count"
+      },
+      {
+        "enabled": true,
+        "name": "has_identity_conflict"
+      },
+      {
+        "enabled": true,
+        "name": "has_unknown_ship_type"
+      },
+      {
+        "enabled": true,
+        "name": "mmsi"
+      }
+    ],
     "table.pivot_column": "has_identity_conflict"
   }
 }

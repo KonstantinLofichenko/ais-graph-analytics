@@ -1,0 +1,140 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2100" height="1510" viewBox="0 0 2100 1510">
+<title>AIS Graph Analytics: current live architecture and planned historical lakehouse</title>
+<desc>Raw, PyFlink and graph paths feed persistent ClickHouse tables and Metabase. Dashed recovery links represent host-mounted checkpoints, not AIS data. The historical lakehouse is planned.</desc>
+<rect width="100%" height="100%" fill="white"/>
+<text x="40" y="48" text-anchor="start" font-family="Arial,DejaVu Sans,sans-serif" font-size="36" font-weight="700" fill="#25324a">AIS Graph Analytics</text>
+<text x="40" y="87" text-anchor="start" font-family="Arial,DejaVu Sans,sans-serif" font-size="24" font-weight="400" fill="#25324a">Current live runtime, persistent analytics and checkpoint recovery</text>
+<text x="2060" y="87" text-anchor="end" font-family="Arial,DejaVu Sans,sans-serif" font-size="20" font-weight="400" fill="#718098">Updated 2026-10-08</text>
+<text x="40" y="112" text-anchor="start" font-family="Arial,DejaVu Sans,sans-serif" font-size="18" font-weight="400" fill="#718098">Both PyFlink jobs enrich reference codes from dbt seeds</text>
+<rect x="250" y="125" width="400" height="78" rx="16" fill="#f8fafc" stroke="#718098" stroke-width="2"/>
+<text x="450.0" y="159" text-anchor="middle" font-family="Arial,DejaVu Sans,sans-serif" font-size="24" font-weight="700" fill="#25324a">BarentsWatch AIS</text>
+<rect x="800" y="125" width="400" height="78" rx="16" fill="#f8fafc" stroke="#718098" stroke-width="2"/>
+<text x="1000.0" y="159" text-anchor="middle" font-family="Arial,DejaVu Sans,sans-serif" font-size="24" font-weight="700" fill="#25324a">Python AIS producer</text>
+<rect x="1350" y="125" width="400" height="78" rx="16" fill="#edf3ff" stroke="#718098" stroke-width="2"/>
+<text x="1550.0" y="159" text-anchor="middle" font-family="Arial,DejaVu Sans,sans-serif" font-size="24" font-weight="700" fill="#25324a">Kafka: ais.positions</text>
+<polyline points="650,164 800,164" fill="none" stroke="#718098" stroke-width="2.5"/>
+<polygon points="800,164 788.2941876694152,169.654551943446 788.2941876694152,158.345448056554" fill="#718098"/>
+<polyline points="1200,164 1350,164" fill="none" stroke="#718098" stroke-width="2.5"/>
+<polygon points="1350,164 1338.2941876694151,169.654551943446 1338.2941876694151,158.345448056554" fill="#718098"/>
+<polyline points="1550,203 1550,222 270,222" fill="none" stroke="#718098" stroke-width="2.5"/>
+<polyline points="1550,222 1830,222" fill="none" stroke="#718098" stroke-width="2.5"/>
+<polyline points="270,222 270,285" fill="none" stroke="#718098" stroke-width="2.5"/>
+<polygon points="270,285 264.345448056554,273.2941876694152 275.654551943446,273.2941876694152" fill="#718098"/>
+<text x="270" y="266" text-anchor="middle" font-family="Arial,DejaVu Sans,sans-serif" font-size="20" font-weight="700" fill="#25324a">RAW HISTORY</text>
+<polyline points="790,222 790,285" fill="none" stroke="#718098" stroke-width="2.5"/>
+<polygon points="790,285 784.345448056554,273.2941876694152 795.654551943446,273.2941876694152" fill="#718098"/>
+<text x="790" y="266" text-anchor="middle" font-family="Arial,DejaVu Sans,sans-serif" font-size="20" font-weight="700" fill="#25324a">GAP STREAM</text>
+<polyline points="1310,222 1310,285" fill="none" stroke="#718098" stroke-width="2.5"/>
+<polygon points="1310,285 1304.345448056554,273.2941876694152 1315.654551943446,273.2941876694152" fill="#718098"/>
+<text x="1310" y="266" text-anchor="middle" font-family="Arial,DejaVu Sans,sans-serif" font-size="20" font-weight="700" fill="#25324a">FEATURE STREAM</text>
+<polyline points="1830,222 1830,285" fill="none" stroke="#718098" stroke-width="2.5"/>
+<polygon points="1830,285 1824.345448056554,273.2941876694152 1835.654551943446,273.2941876694152" fill="#718098"/>
+<text x="1830" y="266" text-anchor="middle" font-family="Arial,DejaVu Sans,sans-serif" font-size="20" font-weight="700" fill="#25324a">GRAPH</text>
+<rect x="40" y="285" width="460" height="160" rx="16" fill="#ecfaf2" stroke="#718098" stroke-width="2"/>
+<text x="270.0" y="319" text-anchor="middle" font-family="Arial,DejaVu Sans,sans-serif" font-size="24" font-weight="700" fill="#25324a">ClickHouse ingestion</text>
+<text x="270.0" y="350" text-anchor="middle" font-family="Arial,DejaVu Sans,sans-serif" font-size="23" font-weight="400" fill="#25324a">Kafka Engine + materialized view</text>
+<text x="270.0" y="378" text-anchor="middle" font-family="Arial,DejaVu Sans,sans-serif" font-size="23" font-weight="400" fill="#25324a">Transport only</text>
+<text x="270.0" y="406" text-anchor="middle" font-family="Arial,DejaVu Sans,sans-serif" font-size="23" font-weight="400" fill="#25324a">Persistent destination below</text>
+<rect x="560" y="285" width="460" height="160" rx="16" fill="#f3efff" stroke="#718098" stroke-width="2"/>
+<text x="790.0" y="319" text-anchor="middle" font-family="Arial,DejaVu Sans,sans-serif" font-size="24" font-weight="700" fill="#25324a">PyFlink gap detector</text>
+<text x="790.0" y="350" text-anchor="middle" font-family="Arial,DejaVu Sans,sans-serif" font-size="22" font-weight="400" fill="#25324a">MMSI ValueState + processing timers</text>
+<text x="790.0" y="378" text-anchor="middle" font-family="Arial,DejaVu Sans,sans-serif" font-size="22" font-weight="400" fill="#25324a">600s pipeline-observed silence</text>
+<text x="790.0" y="406" text-anchor="middle" font-family="Arial,DejaVu Sans,sans-serif" font-size="22" font-weight="400" fill="#25324a">AIS_GAP_DETECTED / AIS_GAP_ENDED</text>
+<rect x="1080" y="285" width="460" height="160" rx="16" fill="#f3efff" stroke="#718098" stroke-width="2"/>
+<text x="1310.0" y="319" text-anchor="middle" font-family="Arial,DejaVu Sans,sans-serif" font-size="24" font-weight="700" fill="#25324a">PyFlink feature job</text>
+<text x="1310.0" y="350" text-anchor="middle" font-family="Arial,DejaVu Sans,sans-serif" font-size="22" font-weight="400" fill="#25324a">MMSI / AIS event time</text>
+<text x="1310.0" y="378" text-anchor="middle" font-family="Arial,DejaVu Sans,sans-serif" font-size="22" font-weight="400" fill="#25324a">5/15/30/60 min windows; 5 min slide</text>
+<text x="1310.0" y="406" text-anchor="middle" font-family="Arial,DejaVu Sans,sans-serif" font-size="22" font-weight="400" fill="#25324a">30s watermark / 60s idleness</text>
+<rect x="1600" y="285" width="460" height="90" rx="16" fill="#eef6ff" stroke="#718098" stroke-width="2"/>
+<text x="1830.0" y="319" text-anchor="middle" font-family="Arial,DejaVu Sans,sans-serif" font-size="24" font-weight="700" fill="#25324a">Kafka Connect</text>
+<text x="1830.0" y="350" text-anchor="middle" font-family="Arial,DejaVu Sans,sans-serif" font-size="22" font-weight="400" fill="#25324a">Neo4j sink / current vessel state</text>
+<rect x="560" y="485" width="460" height="66" rx="16" fill="#edf3ff" stroke="#718098" stroke-width="2"/>
+<text x="790.0" y="519" text-anchor="middle" font-family="Arial,DejaVu Sans,sans-serif" font-size="24" font-weight="700" fill="#25324a">Kafka: ais.vessel.gaps</text>
+<rect x="1080" y="485" width="460" height="66" rx="16" fill="#edf3ff" stroke="#718098" stroke-width="2"/>
+<text x="1310.0" y="519" text-anchor="middle" font-family="Arial,DejaVu Sans,sans-serif" font-size="24" font-weight="700" fill="#25324a">Kafka: ais.vessel.features</text>
+<polyline points="790,445 790,485" fill="none" stroke="#718098" stroke-width="2.5"/>
+<polygon points="790,485 784.345448056554,473.2941876694152 795.654551943446,473.2941876694152" fill="#718098"/>
+<polyline points="1310,445 1310,485" fill="none" stroke="#718098" stroke-width="2.5"/>
+<polygon points="1310,485 1304.345448056554,473.2941876694152 1315.654551943446,473.2941876694152" fill="#718098"/>
+<polyline points="270,445 270,580" fill="none" stroke="#718098" stroke-width="2.5"/>
+<polygon points="270,580 264.345448056554,568.2941876694152 275.654551943446,568.2941876694152" fill="#718098"/>
+<polyline points="790,551 790,580" fill="none" stroke="#718098" stroke-width="2.5"/>
+<polygon points="790,580 784.345448056554,568.2941876694152 795.654551943446,568.2941876694152" fill="#718098"/>
+<polyline points="1310,551 1310,580" fill="none" stroke="#718098" stroke-width="2.5"/>
+<polygon points="1310,580 1304.345448056554,568.2941876694152 1315.654551943446,568.2941876694152" fill="#718098"/>
+<rect x="40" y="580" width="460" height="88" rx="16" fill="#ecfaf2" stroke="#718098" stroke-width="2"/>
+<text x="270.0" y="614" text-anchor="middle" font-family="Arial,DejaVu Sans,sans-serif" font-size="24" font-weight="700" fill="#25324a">raw.ais_positions</text>
+<text x="270.0" y="645" text-anchor="middle" font-family="Arial,DejaVu Sans,sans-serif" font-size="22" font-weight="400" fill="#25324a">Persistent full AIS event history</text>
+<rect x="560" y="580" width="460" height="88" rx="16" fill="#ecfaf2" stroke="#718098" stroke-width="2"/>
+<text x="790.0" y="614" text-anchor="middle" font-family="Arial,DejaVu Sans,sans-serif" font-size="24" font-weight="700" fill="#25324a">analytics.ais_vessel_gap_events</text>
+<text x="790.0" y="645" text-anchor="middle" font-family="Arial,DejaVu Sans,sans-serif" font-size="22" font-weight="400" fill="#25324a">raw Kafka Engine + MV -&gt; MergeTree</text>
+<rect x="1080" y="580" width="460" height="88" rx="16" fill="#ecfaf2" stroke="#718098" stroke-width="2"/>
+<text x="1310.0" y="614" text-anchor="middle" font-family="Arial,DejaVu Sans,sans-serif" font-size="24" font-weight="700" fill="#25324a">analytics.ais_vessel_features</text>
+<text x="1310.0" y="645" text-anchor="middle" font-family="Arial,DejaVu Sans,sans-serif" font-size="22" font-weight="400" fill="#25324a">raw Kafka Engine + MV -&gt; MergeTree</text>
+<rect x="1600" y="425" width="460" height="190" rx="16" fill="#eef6ff" stroke="#718098" stroke-width="2"/>
+<text x="1830.0" y="459" text-anchor="middle" font-family="Arial,DejaVu Sans,sans-serif" font-size="24" font-weight="700" fill="#25324a">Neo4j + APOC + GDS</text>
+<text x="1830.0" y="490" text-anchor="middle" font-family="Arial,DejaVu Sans,sans-serif" font-size="21" font-weight="400" fill="#25324a">Vessel / Port / Community nodes</text>
+<text x="1830.0" y="518" text-anchor="middle" font-family="Arial,DejaVu Sans,sans-serif" font-size="21" font-weight="400" fill="#25324a">VISITED / CONNECTED_TO / MEMBER_OF</text>
+<text x="1830.0" y="546" text-anchor="middle" font-family="Arial,DejaVu Sans,sans-serif" font-size="21" font-weight="400" fill="#25324a">PageRank + Louvain communities</text>
+<text x="1830.0" y="574" text-anchor="middle" font-family="Arial,DejaVu Sans,sans-serif" font-size="21" font-weight="400" fill="#25324a">Current graph; not raw AIS history</text>
+<polyline points="1830,375 1830,425" fill="none" stroke="#718098" stroke-width="2.5"/>
+<polygon points="1830,425 1824.345448056554,413.2941876694152 1835.654551943446,413.2941876694152" fill="#718098"/>
+<polyline points="270,668 270,720" fill="none" stroke="#718098" stroke-width="2.5"/>
+<polygon points="270,720 264.345448056554,708.2941876694152 275.654551943446,708.2941876694152" fill="#718098"/>
+<rect x="40" y="720" width="460" height="115" rx="16" fill="#ecfaf2" stroke="#718098" stroke-width="2"/>
+<text x="270.0" y="754" text-anchor="middle" font-family="Arial,DejaVu Sans,sans-serif" font-size="24" font-weight="700" fill="#25324a">dbt / daily analytics</text>
+<text x="270.0" y="785" text-anchor="middle" font-family="Arial,DejaVu Sans,sans-serif" font-size="21" font-weight="400" fill="#25324a">Marts, port visits and AI enrichment</text>
+<text x="270.0" y="813" text-anchor="middle" font-family="Arial,DejaVu Sans,sans-serif" font-size="21" font-weight="400" fill="#25324a">Airflow-orchestrated batch processing</text>
+<rect x="1600" y="720" width="460" height="115" rx="16" fill="#ecfaf2" stroke="#718098" stroke-width="2"/>
+<text x="1830.0" y="754" text-anchor="middle" font-family="Arial,DejaVu Sans,sans-serif" font-size="24" font-weight="700" fill="#25324a">ClickHouse graph outputs</text>
+<text x="1830.0" y="785" text-anchor="middle" font-family="Arial,DejaVu Sans,sans-serif" font-size="21" font-weight="400" fill="#25324a">Versioned snapshots + dbt BI models</text>
+<text x="1830.0" y="813" text-anchor="middle" font-family="Arial,DejaVu Sans,sans-serif" font-size="21" font-weight="400" fill="#25324a">BI / ML / AI analytical inputs</text>
+<polyline points="1830,615 1830,720" fill="none" stroke="#718098" stroke-width="2.5"/>
+<polygon points="1830,720 1824.345448056554,708.2941876694152 1835.654551943446,708.2941876694152" fill="#718098"/>
+<polyline points="500,752 530,752 530,692 1570,692 1570,560 1600,560" fill="none" stroke="#718098" stroke-width="2.5"/>
+<polygon points="1600,560 1588.2941876694151,565.654551943446 1588.2941876694151,554.345448056554" fill="#718098"/>
+<text x="1050" y="684" text-anchor="middle" font-family="Arial,DejaVu Sans,sans-serif" font-size="18" font-weight="400" fill="#25324a">Port visits / graph synchronization</text>
+<rect x="560" y="865" width="1500" height="125" rx="16" fill="#fff0f5" stroke="#718098" stroke-width="2"/>
+<text x="1310.0" y="899" text-anchor="middle" font-family="Arial,DejaVu Sans,sans-serif" font-size="24" font-weight="700" fill="#25324a">Metabase / persistent ClickHouse tables</text>
+<text x="1310.0" y="930" text-anchor="middle" font-family="Arial,DejaVu Sans,sans-serif" font-size="23" font-weight="400" fill="#25324a">Near Real-Time Vessel Analytics  |  Near Real-Time AIS Gap Monitoring</text>
+<text x="1310.0" y="958" text-anchor="middle" font-family="Arial,DejaVu Sans,sans-serif" font-size="23" font-weight="400" fill="#25324a">Also: Ports on Map, Ports, Vessels, Anomalies &amp; AI Insights</text>
+<polyline points="790,668 790,865" fill="none" stroke="#718098" stroke-width="2.5"/>
+<polygon points="790,865 784.345448056554,853.2941876694152 795.654551943446,853.2941876694152" fill="#718098"/>
+<polyline points="1310,668 1310,865" fill="none" stroke="#718098" stroke-width="2.5"/>
+<polygon points="1310,865 1304.345448056554,853.2941876694152 1315.654551943446,853.2941876694152" fill="#718098"/>
+<polyline points="1830,835 1830,865" fill="none" stroke="#718098" stroke-width="2.5"/>
+<polygon points="1830,865 1824.345448056554,853.2941876694152 1835.654551943446,853.2941876694152" fill="#718098"/>
+<polyline points="500,792 535,792 535,928 560,928" fill="none" stroke="#718098" stroke-width="2.5"/>
+<polygon points="560,928 548.2941876694152,933.654551943446 548.2941876694152,922.345448056554" fill="#718098"/>
+<rect x="40" y="1030" width="2020" height="182" rx="16" fill="#f4f6fa" stroke="#718098" stroke-width="2" stroke-dasharray="8 6"/>
+<polyline points="57,1030 2043,1030" fill="none" stroke="#718098" stroke-width="2.5" stroke-dasharray="8 6"/>
+<polyline points="57,1212 2043,1212" fill="none" stroke="#718098" stroke-width="2.5" stroke-dasharray="8 6"/>
+<polyline points="40,1047 40,1195" fill="none" stroke="#718098" stroke-width="2.5" stroke-dasharray="8 6"/>
+<polyline points="2060,1047 2060,1195" fill="none" stroke="#718098" stroke-width="2.5" stroke-dasharray="8 6"/>
+<text x="1050.0" y="1064" text-anchor="middle" font-family="Arial,DejaVu Sans,sans-serif" font-size="24" font-weight="700" fill="#25324a">SUPPORTING RECOVERY LAYER - dotted links are state operations</text>
+<rect x="70" y="1078" width="490" height="82" rx="16" fill="#f3efff" stroke="#718098" stroke-width="2"/>
+<text x="315.0" y="1112" text-anchor="middle" font-family="Arial,DejaVu Sans,sans-serif" font-size="24" font-weight="700" fill="#25324a">Both PyFlink jobs above</text>
+<text x="315.0" y="1143" text-anchor="middle" font-family="Arial,DejaVu Sans,sans-serif" font-size="21" font-weight="400" fill="#25324a">Checkpoint / restore</text>
+<rect x="655" y="1078" width="700" height="82" rx="16" fill="#f4f6fa" stroke="#718098" stroke-width="2"/>
+<text x="1005.0" y="1112" text-anchor="middle" font-family="Arial,DejaVu Sans,sans-serif" font-size="24" font-weight="700" fill="#25324a">Host-mounted durable checkpoints</text>
+<text x="1005.0" y="1143" text-anchor="middle" font-family="Arial,DejaVu Sans,sans-serif" font-size="22" font-weight="400" fill="#25324a">./flink/checkpoints -&gt; /opt/flink/checkpoints</text>
+<rect x="1450" y="1078" width="580" height="82" rx="16" fill="#f4f6fa" stroke="#718098" stroke-width="2"/>
+<text x="1740.0" y="1112" text-anchor="middle" font-family="Arial,DejaVu Sans,sans-serif" font-size="24" font-weight="700" fill="#25324a">Restore Kafka offsets, state and timers</text>
+<text x="1740.0" y="1143" text-anchor="middle" font-family="Arial,DejaVu Sans,sans-serif" font-size="21" font-weight="400" fill="#25324a">Gap ValueState + partial 5/15/30/60m windows</text>
+<polyline points="560,1119 655,1119" fill="none" stroke="#718098" stroke-width="2.5" stroke-dasharray="8 6"/>
+<polygon points="655,1119 643.2941876694152,1124.654551943446 643.2941876694152,1113.345448056554" fill="#718098"/>
+<polyline points="1355,1119 1450,1119" fill="none" stroke="#718098" stroke-width="2.5" stroke-dasharray="8 6"/>
+<polygon points="1450,1119 1438.2941876694151,1124.654551943446 1438.2941876694151,1113.345448056554" fill="#718098"/>
+<text x="1050" y="1190" text-anchor="middle" font-family="Arial,DejaVu Sans,sans-serif" font-size="20" font-weight="400" fill="#25324a">60s / EXACTLY_ONCE state / timeout 120s / max 1 / restart 10 x 10s / local-host durability; Kafka output at-least-once</text>
+<rect x="40" y="1250" width="2020" height="86" rx="16" fill="#f8fafc" stroke="#718098" stroke-width="2"/>
+<text x="1050.0" y="1284" text-anchor="middle" font-family="Arial,DejaVu Sans,sans-serif" font-size="24" font-weight="700" fill="#25324a">IMPLEMENTED HISTORICAL INGESTION</text>
+<text x="1050.0" y="1315" text-anchor="middle" font-family="Arial,DejaVu Sans,sans-serif" font-size="24" font-weight="400" fill="#25324a">HAIS GeoParquet -&gt; Airflow -&gt; raw.hais_positions -&gt; dbt normalization -&gt; raw.ais_positions</text>
+<rect x="40" y="1362" width="2020" height="100" rx="16" fill="#fff7e7" stroke="#718098" stroke-width="2" stroke-dasharray="8 6"/>
+<polyline points="57,1362 2043,1362" fill="none" stroke="#718098" stroke-width="2.5" stroke-dasharray="8 6"/>
+<polyline points="57,1462 2043,1462" fill="none" stroke="#718098" stroke-width="2.5" stroke-dasharray="8 6"/>
+<polyline points="40,1379 40,1445" fill="none" stroke="#718098" stroke-width="2.5" stroke-dasharray="8 6"/>
+<polyline points="2060,1379 2060,1445" fill="none" stroke="#718098" stroke-width="2.5" stroke-dasharray="8 6"/>
+<text x="1050.0" y="1396" text-anchor="middle" font-family="Arial,DejaVu Sans,sans-serif" font-size="24" font-weight="700" fill="#25324a">PLANNED HISTORICAL LAKEHOUSE - future, not deployed</text>
+<text x="1050.0" y="1427" text-anchor="middle" font-family="Arial,DejaVu Sans,sans-serif" font-size="26" font-weight="400" fill="#25324a">HAIS GeoParquet -&gt; Airflow -&gt; PySpark -&gt; Iceberg -&gt; Trino</text>
+<text x="40" y="1493" text-anchor="start" font-family="Arial,DejaVu Sans,sans-serif" font-size="20" font-weight="400" fill="#718098">Solid arrows: data flow. Recovery is a supporting layer. Metabase never queries Kafka Engine transport tables.</text>
+</svg>

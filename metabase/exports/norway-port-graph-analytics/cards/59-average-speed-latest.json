@@ -1,0 +1,63 @@
+{
+  "cache_ttl": null,
+  "dataset_query": {
+    "database": 2,
+    "lib/type": "mbql/query",
+    "stages": [
+      {
+        "lib/type": "mbql.stage/native",
+        "native": "WITH filtered AS\n(\n    SELECT *\n    FROM analytics.ais_vessel_features\n    WHERE 1 = 1\n      [[AND {{window_minutes}}]]\n),\nlatest AS\n(\n    SELECT max(window_end) AS latest_window_end\n    FROM filtered\n)\nSELECT round(avg(f.avg_speed), 2) AS avg_speed\nFROM filtered AS f\nWHERE f.window_end = (SELECT latest_window_end FROM latest)\n  AND f.avg_speed IS NOT NULL;",
+        "template-tags": [
+          {
+            "default": [
+              5
+            ],
+            "dimension": [
+              "field",
+              {
+                "lib/uuid": "c0045943-82cb-4708-92f7-68d587a5a2e3"
+              },
+              358
+            ],
+            "display-name": "Window Minutes",
+            "id": "dad5e0d6-06b1-4280-9cec-87bdefa849db",
+            "name": "window_minutes",
+            "required": true,
+            "type": "dimension",
+            "widget-type": "id"
+          }
+        ]
+      }
+    ]
+  },
+  "description": null,
+  "display": "scalar",
+  "id": 59,
+  "name": "Average Speed - Latest",
+  "parameter_mappings": [],
+  "parameters": [
+    {
+      "default": [
+        5
+      ],
+      "id": "dad5e0d6-06b1-4280-9cec-87bdefa849db",
+      "isMultiSelect": false,
+      "name": "Window Minutes",
+      "required": true,
+      "slug": "window_minutes",
+      "target": [
+        "dimension",
+        [
+          "template-tag",
+          "window_minutes"
+        ]
+      ],
+      "type": "id"
+    }
+  ],
+  "type": "question",
+  "visualization_settings": {
+    "scalar.segments": [],
+    "table.pivot_column": "active_vessels"
+  }
+}

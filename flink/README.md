@@ -1,4 +1,182 @@
-# PyFlink Kafka smoke job
+# PyFlink streaming jobs
+
+For the raw, streaming, graph and planned historical paths, see the shared
+[architecture overview](../docs/README.md#2-architecture) and
+[canonical diagram](../docs/assets/architecture.svg). This guide owns job
+configuration, timing semantics and recovery operations. Flink processes continuous
+Kafka streams; the planned PySpark/Iceberg/Trino historical path is separate.
+
+## Automatic startup and recovery
+
+```sh
+docker compose --profile streaming up -d
+docker compose logs -f flink-job-submitter
+curl -fsS http://localhost:8082/jobs/overview
+```
+
+The one-shot `flink-job-submitter` starts the existing gap detector and multi-window
+vessel-feature jobs, then exits with code 0 only when both REST statuses are
+`RUNNING`. It uses the existing Flink image, Python jobs, environment settings,
+reference seeds, and `--pyFiles /opt/flink/jobs`. The smoke job remains manual.
+The preserved settings are gap timeout `600` seconds, feature windows `5,15,30,60`
+minutes, slide `5` minutes, watermark `30` seconds, and idleness `60` seconds.
+
+JobManager health, two registered TaskManagers, a Kafka protocol handshake against
+the configured brokers, and at least one free task slot per missing job gate
+submission. At the jobs' current parallelism of one, their default slot-sharing
+group requires one slot each. Polling retries readiness every two seconds for up
+to 300 seconds; this is a readiness loop, not a fixed startup delay. A failure
+exits nonzero and is visible in the submitter logs; rerun after fixing readiness.
+Kafka output topics retain the existing broker auto-creation behavior; the topic
+helper below can also create them explicitly.
+
+A shared named volume records Job IDs and serializes submitter executions with a
+file lock. IDs are persisted **before** submission and passed as
+`$internal.pipeline.job-id` (the installed Flink 2.2.1 internal fixed-ID option).
+Thus a retry after an interrupted submission reuses the
+same ID. Existing jobs, including transitional and restarting jobs, are identified
+by their recorded ID. For jobs submitted manually before the registry existed,
+the submitter checks the display name **and** source/operator plan before adopting
+their IDs. That compatibility check is not a cryptographic application identity;
+do not run a different job with the same name and operator plan. Multiple matching
+active jobs cause a failure instead of another submission. Terminal jobs receive
+fresh IDs; a completely new cluster can reuse IDs from the registry.
+
+Repeated `up -d` restarts the exited submitter and checks the jobs without creating
+copies. To reconcile explicitly (also useful after a manual cancellation):
+
+```sh
+docker compose --profile streaming run --rm --no-deps flink-job-submitter
+```
+
+Flink uses a [fixed-delay restart strategy](https://nightlies.apache.org/flink/flink-docs-release-2.2/docs/ops/state/task_failure_recovery/):
+up to ten attempts, ten seconds apart.
+While the cluster remains alive, this retries failed task execution without the
+submitter creating another job. After the retries are exhausted, fix the cause
+and rerun the submitter. The submitter is a startup client, not a continuous
+supervisor. An abrupt Docker daemon/container failure does not automatically
+invoke it; use Compose startup/reconciliation again when the cluster is ready.
+
+To restart only Flink, leaving Kafka, ClickHouse, Neo4j, Airflow and Metabase alone:
+
+```sh
+docker compose --profile streaming restart \
+  flink-jobmanager flink-taskmanager flink-feature-taskmanager
+# depends_on restart:true triggers the submitter for explicit Compose restarts.
+# Alternatively, recreate the Flink services (e.g. after configuration changes):
+docker compose --profile streaming up -d --no-deps --force-recreate \
+  flink-jobmanager flink-taskmanager flink-feature-taskmanager flink-job-submitter
+```
+
+### Durable checkpoints and restore
+
+Both derived jobs enable `EXACTLY_ONCE` checkpoint mode, filesystem storage,
+retention on cancellation, and a single concurrent checkpoint. Settings default to:
+
+```ini
+FLINK_CHECKPOINT_INTERVAL_SECONDS=60
+FLINK_CHECKPOINT_TIMEOUT_SECONDS=120
+FLINK_CHECKPOINT_MIN_PAUSE_SECONDS=10
+FLINK_CHECKPOINT_DIR=file:///opt/flink/checkpoints
+FLINK_RESTART_ATTEMPTS=10
+FLINK_RESTART_DELAY_SECONDS=10
+```
+
+Compose mounts **`./flink/checkpoints`** into the JobManager, both TaskManagers and
+submitter at `/opt/flink/checkpoints`. The one-shot `flink-checkpoint-init` ensures
+Flink can write the root directory. Checkpoint contents are gitignored. If changing
+the URI, update every mount to expose the same host directory at that absolute
+container path. Local filesystem storage works only while all workers share this
+host mount; it is not multi-host HA, an off-host backup, or protection against
+host/disk loss. Never delete checkpoint files while jobs use them. Retained files
+from retired executions require operator-managed cleanup after confirming they
+are no longer recovery dependencies. Keep the named submitter registry volume.
+
+Within a live cluster, Flink's bounded fixed-delay strategy restores the latest
+completed checkpoint on task failure. Following complete JobManager loss, the
+submitter finds the newest finalized `_metadata` under the logical job's
+`gap/` or `features/` checkpoint directory and submits with `-s` and
+`-claimMode NO_CLAIM`. The original snapshot is retained; the restored execution's
+first checkpoint is independent of it. Only missing jobs are submitted. A chosen
+snapshot that fails restoration never causes a silent fallback to empty state.
+If no completed snapshot exists (including the initial deployment), the submitter
+logs a warning and starts fresh. Job IDs prevent duplicates; checkpoint metadata
+and state files preserve state. Keep job-specific directories isolated; do not
+copy unrelated snapshots into them or modify file timestamps to change ordering.
+
+KafkaSource participates in checkpoints. Restored offsets take precedence over
+`KafkaOffsetsInitializer.latest()`, which applies only to a fresh start. The
+existing consumer group IDs are unchanged; committed Kafka group offsets are not
+a substitute for the checkpoint. Kafka must retain the checkpoint's required
+records throughout the outage. Source retention and topic deletion can invalidate
+recovery.
+
+Restored state includes MMSI `ValueState`, pending processing-time timers and
+already-detected gaps, plus each 5/15/30/60-minute feature window accumulator and
+its event-time timers. Overdue processing-time timers fire when execution resumes,
+so the actual detection timestamp can be later than the saved deadline. Event
+watermarks resume as new source records arrive; an idle source does not manufacture
+event-time progress. Stable source, keyed process, window and sink UIDs identify
+operators. Do not change state types, UIDs, parallelism/window configuration or
+operator topology without a separate state-compatibility migration.
+
+Both Kafka sinks use **AT_LEAST_ONCE** to flush output at checkpoints. Checkpoint
+state has exactly-once semantics; output and ClickHouse ingestion do not have an
+end-to-end exactly-once guarantee. Records emitted after the restored snapshot
+may be replayed, including gap events. A checkpoint containing an already-detected
+gap does not create a new detection merely because the cluster restarted.
+Transactional Kafka sinks and ClickHouse deduplication are outside this change.
+
+In the Flink UI (<http://localhost:8082>), open each job's **Checkpoints** page to
+inspect completed/failed checkpoints, external paths and the restored checkpoint.
+REST provides `/jobs/<job-id>/checkpoints` and `/checkpoints/config` under that job.
+Before restarting, confirm both jobs have a completed checkpoint. Manual restore
+uses the same code and configuration, and must not race the submitter:
+
+```sh
+# Check no copy of this job is active before manual submission.
+docker compose exec -T flink-jobmanager /opt/flink/bin/flink run -d \
+  -s file:///opt/flink/checkpoints/gap/<job-id>/chk-<id>/_metadata \
+  -claimMode NO_CLAIM --pyFiles /opt/flink/jobs -py /opt/flink/jobs/ais_gap_detector.py
+# Features use their features/ checkpoint and ais_vessel_features.py.
+```
+
+Reproducible opt-in validation (run from repository root):
+
+```sh
+python3 -m unittest discover -s flink/tests -p 'test_*.py' -v
+# Private topics/groups and a separate temporary Flink cluster; production untouched.
+# Uses a 30s gap and 5s checkpoint only in the test to shorten validation.
+python3 flink/tests/integration_recovery.py
+# Explicitly RECREATES ONLY production Flink services, then checks REST restores,
+# duplicate safety and growing analytics counts; allow up to 15 minutes for gaps.
+python3 flink/scripts/verify_live_recovery.py
+```
+
+The private test snapshots an already-detected vessel and a vessel with a pending
+timer, stops its whole cluster, publishes a record during the outage, and restores
+both jobs. It checks one detection/recovery for the first vessel, timer detection
+for the second, all four feature windows retaining old plus new observations,
+checkpoint restore counters and concurrent submitter idempotency. Reports are
+written to `/tmp/ais-flink-isolated-recovery.json` and
+`/tmp/ais-flink-production-recovery.json`. The production script records checkpoint
+paths, Job IDs, restored status, analytics counts and unchanged start times for
+Kafka, ClickHouse, Neo4j, Airflow and Metabase.
+
+Validation on 2026-10-08 with Flink 2.2.1 passed both the private state/timer/window
+exercise and the production full-cluster restart. Both production jobs reported
+restoration and completed new checkpoints without failures; both analytics counts
+increased and unrelated services retained their start times.
+
+Manual submission commands below are fresh-start examples for debugging; without
+`-s`, they do not restore a retained checkpoint. Prefer the submitter for normal
+startup/recovery, or use the explicit manual restore example above. List REST jobs
+first; do not manually submit a second copy of an active or transitioning job.
+Prefer the submitter to start only missing jobs using the resolved Compose
+configuration. Manual submissions outside this registry's lock must not race the
+submitter.
+
+## PyFlink Kafka smoke job
 
 The job reads required environment variables, with no broker/topic defaults in
 Python. Configure these in the repository's local `.env` using `.env.example`:
@@ -11,7 +189,7 @@ FLINK_SINK_TOPIC=ais.positions.pyflink.tmp
 
 `KAFKA_TOPIC` is shared with the AIS producer and topic-creation helper; a separate
 `FLINK_SOURCE_TOPIC` is unnecessary. Compose explicitly passes all three settings
-to both Flink containers. Missing or empty values fail before job submission.
+to the Flink JobManager and TaskManagers. Missing or empty values fail before job submission.
 
 ```sh
 docker compose --profile streaming up -d --build flink-jobmanager flink-taskmanager
@@ -99,6 +277,13 @@ Gap event reference semantics:
   code stays null; it is not replaced with the pre-gap code. Existing source
   timestamps and processing-time duration semantics are unchanged.
 
+Feature windows also emit `name`: the latest non-null vessel name by AIS event
+time inside the window. Name selection has its own timestamp and is independent
+of the reference-code observation; later null/missing names do not erase an
+earlier name. All-null/missing names yield null. Empty strings are non-null and
+are retained. Equal assigned millisecond timestamps use the last processed
+non-null name; the right accumulator wins a merge tie.
+
 Feature windows emit `ship_type`, `ship_type_name`, `ship_category`,
 `last_navigation_status`, and `last_navigation_status_name` from the observation
 with the greatest assigned event timestamp inside that window. Ship type is also
@@ -128,7 +313,7 @@ FLINK_GAP_TIMEOUT_SECONDS=600
 The existing `KAFKA_BOOTSTRAP_SERVERS` is reused. These settings and
 `FLINK_REFERENCE_DIR` are required;
 the timeout must be a positive integer number of seconds and the source and sink
-must differ. Compose passes the gap settings to both Flink containers. Keep the
+must differ. Compose passes the gap settings to the Flink JobManager and TaskManagers. Keep the
 local and example timeout at `600` (ten minutes).
 
 ### State and timers
@@ -170,8 +355,8 @@ never return continue to occupy a small keyed-state entry.
 seconds**. It does not establish that a vessel disappeared: receiver coverage,
 source delays, or pipeline backpressure can also produce silence. Processing time
 is the Flink operator's clock; `gap_detected_at` is the callback processing time
-in UTC, which may be later than the timer deadline. Event-time/watermark processing
-is intentionally deferred to the next milestone.
+in UTC, which may be later than the timer deadline. The gap job retains processing-time semantics; the separate feature job uses
+event-time watermarks and windows.
 
 Malformed JSON, non-object JSON, and missing/invalid MMSIs are dropped from this
 job with a warning that does not log the message payload. Accepted MMSIs are
@@ -182,7 +367,8 @@ drop policy does not change the smoke job.
 
 ### Submit and inspect
 
-After applying the updated Compose environment to the Flink containers, list
+Automatic startup normally handles submission. For manual debugging, after
+applying the updated Compose environment to the Flink containers, list
 running jobs first and do not submit another `AIS vessel gap detector` while one
 is already running. Refreshing containers interrupts existing jobs; if keeping
 another job running, pass the new settings with `docker compose exec -e` instead.
@@ -198,16 +384,15 @@ docker compose exec -T flink-jobmanager \
   /opt/flink/bin/flink run -d --pyFiles /opt/flink/jobs -py /opt/flink/jobs/ais_gap_detector.py
 ```
 
-The job starts at latest Kafka offsets and only monitors vessels observed after
-submission. It can run alongside the feature job using the available TaskManager slots. Inspect the job at <http://localhost:8082> and configured source/gap topics
+A fresh job starts at latest Kafka offsets and monitors vessels observed after
+submission. A restored job resumes checkpointed offsets and vessel state. It can run alongside the feature job using the available TaskManager slots. Inspect the job at <http://localhost:8082> and configured source/gap topics
 in Kafbat at <http://localhost:8081>. Check that source offsets keep advancing and
 wait at least one timeout for naturally silent vessels; do not inject artificial
 records into the shared AIS source.
 
-The one-detection/one-recovery rule applies within an uninterrupted job execution.
-This milestone does not enable checkpoints or transactional Kafka delivery: state is not durable
-across a fresh submission, and exactly-once delivery across failures is not
-promised. No ClickHouse writes or event-time state are added.
+The one-detection/one-recovery rule is retained in checkpointed keyed state.
+Output since the last restored checkpoint can replay with at-least-once delivery;
+see the recovery guarantees above. ClickHouse ingestion and gap payloads are unchanged.
 
 ```sh
 python3 -m unittest discover -s flink/tests -p 'test_*.py' -v
@@ -285,7 +470,7 @@ window. `ProcessWindowFunction` adds `window_minutes`, boundaries and reference 
 loading the shared seeds once per operator initialization. Output fields are:
 
 ```text
-mmsi, window_minutes, window_start, window_end, position_count, avg_speed, min_speed, max_speed
+mmsi, name, window_minutes, window_start, window_end, position_count, avg_speed, min_speed, max_speed
 ship_type, ship_type_name, ship_category, last_navigation_status, last_navigation_status_name
 ```
 
@@ -312,11 +497,13 @@ window must already be closed. There is no late-data side output or correction
 stream yet. In overlapping windows, a late event can be excluded from a closed
 short window while still contributing to open longer windows. Incremental output
 therefore reflects accepted records, and may differ from a later batch aggregation over all raw Kafka records when late data
-arrives. Checkpoints and exactly-once delivery are not introduced here.
+arrives. Checkpoints preserve the partial accumulators; Kafka output remains
+at-least-once as documented above.
 
 ### Submit and validate
 
-Check available slots before submission. Add the optional TaskManager only if
+Automatic startup includes both TaskManagers. For manual debugging, check
+available slots before submission. Add the second TaskManager only if
 capacity is insufficient, without restarting existing jobs:
 
 ```sh
@@ -339,7 +526,8 @@ to reload `.env`. Do not submit a duplicate feature job.
 
 Inspect <http://localhost:8082> for `AIS vessel multi-window event-time features` and the
 configured output topic in Kafbat at <http://localhost:8081>. The source starts at
-latest offsets: startup windows can be partial for **each size**. A complete
+latest offsets for a fresh start: startup windows can be partial for **each size**.
+Restoration instead preserves partial windows and resumes checkpointed offsets. A complete
 60-minute validation requires a window whose start is after the job began
 consuming, then waiting until its end plus watermark delay. Do not mistake a
 60-minute-labelled startup result for a full hour of captured data. For an
@@ -356,3 +544,29 @@ docker exec -i -e PYTHONPATH=/opt/flink/jobs ais-flink-jobmanager python - \
   < flink/tests/test_vessel_windows.py
 docker compose exec -T flink-jobmanager /opt/flink/bin/flink cancel <feature-job-id>
 ```
+
+The derived Kafka outputs are persisted for BI in
+`analytics.ais_vessel_features` and `analytics.ais_vessel_gap_events`; Kafka Engine
+tables and ingestion views stay in `raw`. See [ClickHouse ingestion](../clickhouse/README.md).
+Historical ClickHouse feature rows from before the name-field deployment retain
+NULL names. The initial checkpointing deployment starts fresh because the older
+executions had no checkpoints. Subsequent compatible submissions through the
+submitter restore retained state rather than empty feature windows.
+
+## Metabase near-real-time tabs
+
+The [Norway Port Graph Analytics dashboard](../metabase/README.md) has two tabs
+backed by these jobs: **Near Real-Time Vessel Analytics** reads the latest
+completed windows from `analytics.ais_vessel_features`, and **Near Real-Time AIS
+Gap Monitoring** reads lifecycle events from `analytics.ais_vessel_gap_events`.
+Both tables expose `activity_date` first: `toDate(window_end)` for features,
+`toDate(gap_detected_at)` for detections and `toDate(gap_ended_at)` for recoveries.
+Dates use UTC; the gap date is nullable if an end timestamp is absent.
+
+The dashboard's Window minute selector is mapped to the five feature charts/KPIs;
+the Latest Vessels Features table currently retains its own five-minute default.
+Gap cards use rolling one-hour/24-hour UTC ranges. Neither new tab is connected to
+the dashboard's historical Date/Last Seen filters. Feature output follows
+watermark closure, and gap detection means pipeline-observed silence, not proof
+of vessel disappearance. Recovery can replay output with at-least-once delivery,
+so dashboard event counts are not deduplicated lifecycle counts.

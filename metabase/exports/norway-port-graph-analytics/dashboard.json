@@ -1157,6 +1157,250 @@
       "size_x": 12,
       "size_y": 7,
       "visualization_settings": {}
+    },
+    {
+      "action_id": null,
+      "card_id": 58,
+      "col": 0,
+      "dashboard_tab_id": 8,
+      "inline_parameters": [],
+      "parameter_mappings": [
+        {
+          "card_id": 58,
+          "parameter_id": "ce09ac52",
+          "target": [
+            "dimension",
+            [
+              "template-tag",
+              "window_minutes"
+            ],
+            {
+              "stage-number": 0
+            }
+          ]
+        }
+      ],
+      "row": 0,
+      "series": [],
+      "size_x": 4,
+      "size_y": 2,
+      "visualization_settings": {}
+    },
+    {
+      "action_id": null,
+      "card_id": 59,
+      "col": 4,
+      "dashboard_tab_id": 8,
+      "inline_parameters": [],
+      "parameter_mappings": [
+        {
+          "card_id": 59,
+          "parameter_id": "ce09ac52",
+          "target": [
+            "dimension",
+            [
+              "template-tag",
+              "window_minutes"
+            ],
+            {
+              "stage-number": 0
+            }
+          ]
+        }
+      ],
+      "row": 0,
+      "series": [],
+      "size_x": 4,
+      "size_y": 2,
+      "visualization_settings": {}
+    },
+    {
+      "action_id": null,
+      "card_id": 60,
+      "col": 0,
+      "dashboard_tab_id": 8,
+      "inline_parameters": [],
+      "parameter_mappings": [
+        {
+          "card_id": 60,
+          "parameter_id": "ce09ac52",
+          "target": [
+            "dimension",
+            [
+              "template-tag",
+              "window_minutes"
+            ],
+            {
+              "stage-number": 0
+            }
+          ]
+        }
+      ],
+      "row": 2,
+      "series": [],
+      "size_x": 8,
+      "size_y": 5,
+      "visualization_settings": {}
+    },
+    {
+      "action_id": null,
+      "card_id": 61,
+      "col": 8,
+      "dashboard_tab_id": 8,
+      "inline_parameters": [],
+      "parameter_mappings": [
+        {
+          "card_id": 61,
+          "parameter_id": "ce09ac52",
+          "target": [
+            "dimension",
+            [
+              "template-tag",
+              "window_minutes"
+            ],
+            {
+              "stage-number": 0
+            }
+          ]
+        }
+      ],
+      "row": 0,
+      "series": [],
+      "size_x": 8,
+      "size_y": 7,
+      "visualization_settings": {}
+    },
+    {
+      "action_id": null,
+      "card_id": 62,
+      "col": 16,
+      "dashboard_tab_id": 8,
+      "inline_parameters": [],
+      "parameter_mappings": [
+        {
+          "card_id": 62,
+          "parameter_id": "ce09ac52",
+          "target": [
+            "dimension",
+            [
+              "template-tag",
+              "window_minutes"
+            ],
+            {
+              "stage-number": 0
+            }
+          ]
+        }
+      ],
+      "row": 0,
+      "series": [],
+      "size_x": 8,
+      "size_y": 7,
+      "visualization_settings": {}
+    },
+    {
+      "action_id": null,
+      "card_id": 63,
+      "col": 0,
+      "dashboard_tab_id": 8,
+      "inline_parameters": [],
+      "parameter_mappings": [],
+      "row": 7,
+      "series": [],
+      "size_x": 24,
+      "size_y": 9,
+      "visualization_settings": {}
+    },
+    {
+      "action_id": null,
+      "card_id": 64,
+      "col": 0,
+      "dashboard_tab_id": 9,
+      "inline_parameters": [],
+      "parameter_mappings": [],
+      "row": 0,
+      "series": [],
+      "size_x": 4,
+      "size_y": 2,
+      "visualization_settings": {}
+    },
+    {
+      "action_id": null,
+      "card_id": 65,
+      "col": 12,
+      "dashboard_tab_id": 9,
+      "inline_parameters": [],
+      "parameter_mappings": [],
+      "row": 0,
+      "series": [],
+      "size_x": 12,
+      "size_y": 6,
+      "visualization_settings": {}
+    },
+    {
+      "action_id": null,
+      "card_id": 66,
+      "col": 4,
+      "dashboard_tab_id": 9,
+      "inline_parameters": [],
+      "parameter_mappings": [],
+      "row": 0,
+      "series": [],
+      "size_x": 4,
+      "size_y": 2,
+      "visualization_settings": {}
+    },
+    {
+      "action_id": null,
+      "card_id": 67,
+      "col": 8,
+      "dashboard_tab_id": 9,
+      "inline_parameters": [],
+      "parameter_mappings": [],
+      "row": 0,
+      "series": [],
+      "size_x": 4,
+      "size_y": 2,
+      "visualization_settings": {}
+    },
+    {
+      "action_id": null,
+      "card_id": 68,
+      "col": 0,
+      "dashboard_tab_id": 9,
+      "inline_parameters": [],
+      "parameter_mappings": [],
+      "row": 2,
+      "series": [],
+      "size_x": 12,
+      "size_y": 4,
+      "visualization_settings": {}
+    },
+    {
+      "action_id": null,
+      "card_id": 70,
+      "col": 0,
+      "dashboard_tab_id": 7,
+      "inline_parameters": [],
+      "parameter_mappings": [],
+      "row": 10,
+      "series": [],
+      "size_x": 12,
+      "size_y": 9,
+      "visualization_settings": {}
+    },
+    {
+      "action_id": null,
+      "card_id": 71,
+      "col": 0,
+      "dashboard_tab_id": 9,
+      "inline_parameters": [],
+      "parameter_mappings": [],
+      "row": 6,
+      "series": [],
+      "size_x": 24,
+      "size_y": 9,
+      "visualization_settings": {}
     }
   ],
   "description": null,
@@ -1175,7 +1419,7 @@
       "type": "string/="
     },
     {
-      "default": "2026-09-28",
+      "default": "2026-10-07",
       "id": "1d9e4fac",
       "name": "Date",
       "required": true,
@@ -1242,6 +1486,35 @@
       "sectionId": "string",
       "slug": "ship_type",
       "type": "string/="
+    },
+    {
+      "id": "ce09ac52",
+      "isMultiSelect": false,
+      "name": "Window minute",
+      "sectionId": "id",
+      "slug": "window_minute",
+      "type": "number/=",
+      "values_source_config": {
+        "values": [
+          [
+            "5",
+            "5 minute"
+          ],
+          [
+            "15",
+            "15 minute"
+          ],
+          [
+            "30",
+            "half an hour"
+          ],
+          [
+            "60",
+            "one hour"
+          ]
+        ]
+      },
+      "values_source_type": "static-list"
     }
   ],
   "tabs": [
@@ -1280,6 +1553,24 @@
       "name": "Anomalies & AI Insights",
       "position": 3,
       "updated_at": "2026-09-30T08:04:32.078003Z"
+    },
+    {
+      "created_at": "2026-10-07T18:26:59.51317Z",
+      "dashboard_id": 2,
+      "entity_id": "1ttht6ALp1E7Y5tU0Gbt6",
+      "id": 8,
+      "name": "Near Real-Time Vessel Analytics",
+      "position": 4,
+      "updated_at": "2026-10-07T18:26:59.51317Z"
+    },
+    {
+      "created_at": "2026-10-08T08:36:32.998071Z",
+      "dashboard_id": 2,
+      "entity_id": "FPtfC6TTSHmaRC-jpJis6",
+      "id": 9,
+      "name": "Near Real-Time AIS Gap Monitoring",
+      "position": 5,
+      "updated_at": "2026-10-08T08:36:32.998071Z"
     }
   ],
   "width": "full"

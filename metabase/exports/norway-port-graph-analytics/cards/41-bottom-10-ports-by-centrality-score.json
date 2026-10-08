@@ -101,6 +101,40 @@
             307
           ]
         ],
+        "filters": [
+          [
+            "=",
+            {
+              "lib/uuid": "493f31d8-7709-4207-9f13-7dd428dda169"
+            },
+            [
+              "field",
+              {
+                "base-type": "type/Text",
+                "effective-type": "type/Text",
+                "lib/uuid": "c067016c-1e86-46d0-9034-73bc88072ae7"
+              },
+              106
+            ],
+            "Norway"
+          ],
+          [
+            "=",
+            {
+              "lib/uuid": "a52100db-8117-4746-8714-6b5b5d78293f"
+            },
+            [
+              "field",
+              {
+                "base-type": "type/Date",
+                "effective-type": "type/Date",
+                "lib/uuid": "27c0d420-032a-4724-8abd-a3d4279743c5"
+              },
+              353
+            ],
+            "2026-10-07"
+          ]
+        ],
         "lib/type": "mbql.stage/mbql",
         "limit": 10,
         "order-by": [
@@ -163,11 +197,13 @@
       },
       "[\"name\",\"window_end\"]": {
         "column_title": "Window End",
-        "date_abbreviate": true
+        "date_abbreviate": true,
+        "time_style": "HH:mm"
       },
       "[\"name\",\"window_start\"]": {
         "column_title": "Window Start",
-        "date_abbreviate": true
+        "date_abbreviate": true,
+        "time_style": "HH:mm"
       }
     },
     "table.cell_column": "max",

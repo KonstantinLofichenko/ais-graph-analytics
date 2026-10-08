@@ -10,7 +10,7 @@ milestone.
 
 ## Run from the repository root
 
-The [fresh-clone quickstart](../../README.md#fresh-clone-quickstart) uses Docker
+The [fresh-clone quickstart](../../README.md#fresh-clone-quick-start) uses Docker
 Airflow for normal daily processing. The commands here are an optional host CLI
 for previews, diagnostics, and non-daily timestamp windows. Set up its separate
 Python environment first:

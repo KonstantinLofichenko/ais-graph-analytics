@@ -1,9 +1,14 @@
 # Metabase dashboard and transfer
 
+Metabase reads persistent ClickHouse analytical tables across the raw/dbt, Flink
+and graph paths. Kafka Engine tables are ingestion infrastructure. See the shared
+[architecture overview](../docs/README.md#2-architecture); the dashboard behavior
+and filter mappings below are the reporting reference.
+
 ## Norway Port Graph Analytics
 
 The tracked export in [`exports/norway-port-graph-analytics/`](exports/norway-port-graph-analytics/)
-contains four tabs:
+was refreshed on 2026-10-08 and contains six tabs and 31 saved cards:
 
 | Tab | Main source and purpose |
 | --- | --- |
@@ -11,6 +16,8 @@ contains four tabs:
 | **Ports** | PageRank tables with human-readable Community names, vessels/visits by community, and a Communities list. Uses `port_graph_metrics_enriched` and `port_graph_communities`; country enrichment requires the separately populated `raw.countries` source. |
 | **Vessels** | The `vessels` mart: totals, recent activity, categories, navigation status, last-known positions, and details. |
 | **Anomalies & AI Insights** | `vessel_daily_anomalies` and `vessel_daily_enriched` for a selected UTC day. |
+| **Near Real-Time Vessel Analytics** | Latest completed Flink windows from `analytics.ais_vessel_features`, with a Window minute selector. |
+| **Near Real-Time AIS Gap Monitoring** | Pipeline-observed silence and recovery from `analytics.ais_vessel_gap_events`, using rolling one-hour and 24-hour ranges. |
 
 The **Anomalies & AI Insights** tab contains **Anomaly Vessel-Days**, **AI-Enriched Anomalies**,
 **Speed + Stationary Anomalies**, **Average Anomaly Severity**, **Anomalies by
@@ -27,7 +34,7 @@ for display: `speed_and_stationary` becomes **Speed + Stationary**;
 translations are repeated across cards to demonstrate presentation-layer
 functions; the underlying ClickHouse values remain unchanged.
 
-The current exported dashboard includes a fixed historical default for **Date**.
+The current exported dashboard includes a fixed historical default for **Date** (`2026-10-07`) and **Last Seen** (`2026-09-29`).
 Review that value and source/filter mappings after import before
 using the dashboard for a different run. The tracked export is a configuration
 snapshot, not a provisioned database or a live screenshot.
@@ -48,6 +55,47 @@ Community names and labels come from the selected graph run. Historical NULL lab
 remain NULL; they are never filled from current communities. The activity chart
 groups by `community_name`, so unlabeled historical communities share a blank
 group. The Communities list also includes `community_id`, keeping those rows distinct.
+
+## Near-real-time tabs
+
+**Near Real-Time Vessel Analytics** contains Active Vessels — Latest, Average
+Speed - Latest, Top 10 Fastest Vessels - Latest, Vessels by Ship Category - Latest,
+Vessels by Navigation Status - Latest, and Latest Vessels Features. The queries
+select the greatest `window_end` for their chosen window size, rather than the
+latest row for each vessel. Average Speed is the mean of non-null per-vessel
+window averages, not a position-weighted average. The details table includes
+vessel names, counts, speed metrics and UTC window boundaries, capped at 100 rows.
+
+The **Window minute** selector offers 5, 15, 30 and 60 minutes and is mapped to
+cards 58–62. Each feature card has a required five-minute query default. In the
+current live/exported layout, card 63 (Latest Vessels Features) has no dashboard
+parameter mapping and retains its own default; changing the dashboard selector
+does not change that table. Date and Last Seen are not mapped to the new tabs.
+
+**Near Real-Time AIS Gap Monitoring** contains Gaps Detected — Last Hour, Gaps
+Recovered — Last Hour, Vessels with Most Recovered Gaps — Last 24 Hours, Average
+Recovered Gap — Last 24 Hours, Gap Duration Distribution — Last 24 Hours, and
+Latest Gap Events. Detection counts use `gap_detected_at`; recovery counts,
+rankings and duration charts use `gap_ended_at`. Durations are displayed in
+minutes and include the full observed silence before detection. Latest Gap Events
+(card 71) shows the most recent 100 detected/recovered events from the last 24
+hours, ordered by their lifecycle timestamp. These rolling queries use `now('UTC')`
+and are independent of the historical Date filter.
+
+The Ports on Map tab also contains card 70, labeled Latest Gap Events. Its current
+query is a top-ten ranking of vessels with recovered gaps over the last 24 hours,
+matching card 65's query; it is distinct from the lifecycle event table on the gap
+monitoring tab. The export preserves that live configuration.
+
+These cards depend on the streaming Compose profile, both Flink jobs, and the
+[ClickHouse derived-topic ingestion](../clickhouse/README.md). Feature results
+arrive when event-time watermarks close non-empty windows; they are not a
+wall-clock refresh heartbeat. A gap indicates this pipeline has not observed AIS
+for the configured 600 seconds, not proof of vessel disappearance. Historical
+feature names can be NULL. Both tables expose UTC `activity_date`: window-end date
+for features and detection/end date for gaps. `activity_date` supports historical analysis and is not the primary filter for
+these live cards. Kafka/ClickHouse delivery is at-least-once, so event counts can include replayed records after recovery. See
+[Flink startup and state recovery](../flink/README.md).
 
 ## JSON transfer
 

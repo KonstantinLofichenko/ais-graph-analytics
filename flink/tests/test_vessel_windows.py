@@ -42,7 +42,8 @@ class InstalledWindowTests(unittest.TestCase):
         end = job.parse_msgtime('2026-10-06T18:10:00Z')
         # Latest observation arrives first; each 5m pane includes a null speed.
         events = [{'event_timestamp_ms': end - minute * 60000, 'speed': None if minute % 5 == 0 else float(minute),
-                   'ship_type': 60, 'navigation_status': minute} for minute in range(1, 61)]
+                   'ship_type': 60, 'navigation_status': minute,
+                   'name': None if minute == 1 else f'Vessel {minute}'} for minute in range(1, 61)]
         for minutes in (5, 15, 30, 60):
             assigner = SlidingEventTimeWindows.of(Time.minutes(minutes), Time.minutes(5))
             agg = job.VesselAggregate()
@@ -56,6 +57,7 @@ class InstalledWindowTests(unittest.TestCase):
             self.assertEqual(result['avg_speed'], sum(speeds) / len(speeds))
             self.assertEqual((result['min_speed'], result['max_speed']), (min(speeds), max(speeds)))
             self.assertEqual(result['last_observation']['navigation_status'], 1)
+            self.assertEqual(result['name'], 'Vessel 2')
 
     def test_watermark_trigger_and_zero_allowed_lateness(self):
         assigner = SlidingEventTimeWindows.of(Time.minutes(15), Time.minutes(5))

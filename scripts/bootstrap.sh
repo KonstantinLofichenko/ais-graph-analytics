@@ -40,13 +40,20 @@ migrations=(
   clickhouse/migrations/009_vessel_ai_input_hashes.sql
   clickhouse/migrations/010_port_visits_activity_date.sql
 )
-for sql_file in "${migrations[@]}" neo4j/cypher/01_constraints.cypher; do
+derived_sql=clickhouse/init/04_flink_derived.sql
+derived_migration=clickhouse/init/04_flink_derived.sh
+for sql_file in "$derived_migration" "$derived_sql" "${migrations[@]}" neo4j/cypher/01_constraints.cypher; do
   [[ -r "$sql_file" ]] || fail "Cannot read $sql_file"
 done
 
 printf 'Creating/verifying the configured Kafka topic...\n'
 if ! sh scripts/create-kafka-topic.sh >/dev/null; then
   fail 'Kafka topic setup failed; check KAFKA_BOOTSTRAP_SERVERS, KAFKA_TOPIC, and the running broker.'
+fi
+
+printf 'Migrating/bootstraping Flink-derived analytics tables...\n'
+if ! docker compose exec -T clickhouse sh /docker-entrypoint-initdb.d/04_flink_derived.sh; then
+  fail 'Flink-derived migration failed; no legacy history is dropped. Check conflicting table names and logs.'
 fi
 
 for migration in "${migrations[@]}"; do

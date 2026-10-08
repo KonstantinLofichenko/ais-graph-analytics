@@ -1,0 +1,23 @@
+{
+  "cache_ttl": null,
+  "dataset_query": {
+    "database": 2,
+    "lib/type": "mbql/query",
+    "stages": [
+      {
+        "lib/type": "mbql.stage/native",
+        "native": "SELECT count() AS gaps_detected\nFROM analytics.ais_vessel_gap_events\nWHERE event_type = 'AIS_GAP_DETECTED'\n  AND gap_detected_at >= now('UTC') - INTERVAL 1 HOUR;"
+      }
+    ]
+  },
+  "description": null,
+  "display": "scalar",
+  "id": 64,
+  "name": "Gaps Detected — Last Hour",
+  "parameter_mappings": [],
+  "parameters": [],
+  "type": "question",
+  "visualization_settings": {
+    "scalar.segments": []
+  }
+}

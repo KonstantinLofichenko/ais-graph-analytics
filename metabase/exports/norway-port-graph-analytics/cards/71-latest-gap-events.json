@@ -1,0 +1,103 @@
+{
+  "cache_ttl": null,
+  "dataset_query": {
+    "database": 2,
+    "lib/type": "mbql/query",
+    "stages": [
+      {
+        "lib/type": "mbql.stage/native",
+        "native": "SELECT\n    multiIf(\n        event_type = 'AIS_GAP_DETECTED', 'Detected',\n        event_type = 'AIS_GAP_ENDED', 'Recovered',\n        event_type\n    ) AS event_type,\n    name,\n    mmsi,\n    ship_category,\n    coalesce(\n        resumed_navigation_status_name,\n        navigation_status_name\n    ) AS navigation_status,\n    gap_detected_at,\n    gap_ended_at,\n    round(gap_duration_seconds / 60, 1) AS gap_minutes,\n    coalesce(gap_ended_at, gap_detected_at) AS event_time\nFROM analytics.ais_vessel_gap_events\nWHERE coalesce(gap_ended_at, gap_detected_at)\n      >= now('UTC') - INTERVAL 24 HOUR\nORDER BY event_time DESC\nLIMIT 100;"
+      }
+    ]
+  },
+  "description": null,
+  "display": "table",
+  "id": 71,
+  "name": "Latest Gap Events",
+  "parameter_mappings": [],
+  "parameters": [],
+  "type": "question",
+  "visualization_settings": {
+    "column_settings": {
+      "[\"name\",\"event_time\"]": {
+        "column_title": "Event time",
+        "date_abbreviate": true,
+        "time_enabled": "seconds",
+        "time_style": "HH:mm"
+      },
+      "[\"name\",\"event_type\"]": {
+        "column_title": "Event type"
+      },
+      "[\"name\",\"gap_detected_at\"]": {
+        "column_title": "Gap detected at",
+        "date_abbreviate": true,
+        "time_enabled": "seconds",
+        "time_style": "HH:mm"
+      },
+      "[\"name\",\"gap_ended_at\"]": {
+        "column_title": "Gap ended at",
+        "date_abbreviate": true,
+        "time_enabled": "seconds",
+        "time_style": "HH:mm"
+      },
+      "[\"name\",\"gap_minutes\"]": {
+        "column_title": "Gap minutes",
+        "decimals": 0
+      },
+      "[\"name\",\"mmsi\"]": {
+        "column_title": "MMSI",
+        "decimals": 0,
+        "number_separators": "."
+      },
+      "[\"name\",\"name\"]": {
+        "column_title": "Vessel name"
+      },
+      "[\"name\",\"navigation_status\"]": {
+        "column_title": "Navigation status"
+      },
+      "[\"name\",\"ship_category\"]": {
+        "column_title": "Ship category"
+      }
+    },
+    "table.cell_column": "mmsi",
+    "table.columns": [
+      {
+        "enabled": true,
+        "name": "name"
+      },
+      {
+        "enabled": true,
+        "name": "ship_category"
+      },
+      {
+        "enabled": true,
+        "name": "event_type"
+      },
+      {
+        "enabled": true,
+        "name": "navigation_status"
+      },
+      {
+        "enabled": true,
+        "name": "gap_detected_at"
+      },
+      {
+        "enabled": true,
+        "name": "gap_ended_at"
+      },
+      {
+        "enabled": true,
+        "name": "gap_minutes"
+      },
+      {
+        "enabled": true,
+        "name": "event_time"
+      },
+      {
+        "enabled": true,
+        "name": "mmsi"
+      }
+    ],
+    "table.pivot_column": "last_event_msgtime"
+  }
+}

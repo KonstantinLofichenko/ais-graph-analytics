@@ -14,7 +14,7 @@ Required variables are documented in the root `.env.example`: BarentsWatch crede
 
 This REST repair/backfill workflow is separate from HAIS file ingestion and is not
 part of the daily analytics master. Complete the
-[fresh-clone quickstart](../../README.md#fresh-clone-quickstart) first.
+[fresh-clone quickstart](../../README.md#fresh-clone-quick-start) first.
 
 Optional host CLI (requires its own Python dependencies):
 

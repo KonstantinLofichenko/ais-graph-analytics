@@ -1,0 +1,31 @@
+{
+  "cache_ttl": null,
+  "dataset_query": {
+    "database": 2,
+    "lib/type": "mbql/query",
+    "stages": [
+      {
+        "lib/type": "mbql.stage/native",
+        "native": "SELECT\n    multiIf(\n        gap_duration_seconds < 900,  '10–15 min',\n        gap_duration_seconds < 1800, '15–30 min',\n        gap_duration_seconds < 3600, '30–60 min',\n        '60+ min'\n    ) AS gap_duration,\n    count() AS gaps\nFROM analytics.ais_vessel_gap_events\nWHERE event_type = 'AIS_GAP_ENDED'\n  AND gap_ended_at >= now('UTC') - INTERVAL 24 HOUR\n  AND gap_duration_seconds IS NOT NULL\nGROUP BY gap_duration\nORDER BY\n    multiIf(\n        gap_duration = '10–15 min', 1,\n        gap_duration = '15–30 min', 2,\n        gap_duration = '30–60 min', 3,\n        4\n    );"
+      }
+    ]
+  },
+  "description": null,
+  "display": "treemap",
+  "id": 68,
+  "name": "Gap Duration Distribution — Last 24 Hours",
+  "parameter_mappings": [],
+  "parameters": [],
+  "type": "question",
+  "visualization_settings": {
+    "column_settings": {},
+    "pie.percent_visibility": "both",
+    "pie.show_labels": true,
+    "pie.show_legend": true,
+    "pie.show_total": true,
+    "scalar.segments": [],
+    "treemap.grouping": "gap_duration",
+    "treemap.value": "gaps",
+    "version": 2
+  }
+}

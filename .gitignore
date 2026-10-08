@@ -63,3 +63,6 @@ pipelines/port_visits/.run.lock
 .venv-dbt/
 .venv-metabase/
 /metabase_export/
+
+# Durable local Flink state (never commit checkpoint contents)
+/flink/checkpoints/

@@ -19,7 +19,7 @@ AIS positions -> port visits -> CONNECTED_TO graph -> Airflow ais_gds_metrics
 
 ## Setup and execution
 
-Complete the [fresh-clone quickstart](../../README.md#fresh-clone-quickstart).
+Complete the [fresh-clone quickstart](../../README.md#fresh-clone-quick-start).
 Its bootstrap applies [003_port_graph_metrics.sql](../../clickhouse/migrations/003_port_graph_metrics.sql),
 [006_graph_community_labels.sql](../../clickhouse/migrations/006_graph_community_labels.sql),
 and [008_port_graph_metrics_tombstones.sql](../../clickhouse/migrations/008_port_graph_metrics_tombstones.sql).

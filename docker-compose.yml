@@ -222,6 +222,8 @@ services:
     container_name: ais-clickhouse
     environment:
       CLICKHOUSE_DB: ${CLICKHOUSE_DB:-ais}
+      # Init scripts preserve history and migrate derived destinations on existing volumes.
+      CLICKHOUSE_ALWAYS_RUN_INITDB_SCRIPTS: "1"
       CLICKHOUSE_USER: ${CLICKHOUSE_USER:-default}
       CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD}
     ports:
@@ -262,6 +264,17 @@ services:
     networks:
       - ais-network
 
+  flink-checkpoint-init:
+    image: ais-flink:2.2.1
+    build:
+      context: ./flink
+      dockerfile: Dockerfile
+    profiles: ["streaming"]
+    user: "0:0"
+    command: ["sh", "-c", "mkdir -p /opt/flink/checkpoints && chown flink:flink /opt/flink/checkpoints"]
+    volumes:
+      - ./flink/checkpoints:/opt/flink/checkpoints
+
   flink-jobmanager:
     build:
       context: ./flink
@@ -272,7 +285,7 @@ services:
     command: jobmanager
     ports:
       - "8082:8081"
-    environment:
+    environment: &flink-environment
       KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS:?KAFKA_BOOTSTRAP_SERVERS is required}
       KAFKA_TOPIC: ${KAFKA_TOPIC:?KAFKA_TOPIC is required}
       FLINK_SINK_TOPIC: ${FLINK_SINK_TOPIC:?FLINK_SINK_TOPIC is required}
@@ -288,14 +301,31 @@ services:
       FLINK_FEATURE_SLIDE_MINUTES: ${FLINK_FEATURE_SLIDE_MINUTES:?FLINK_FEATURE_SLIDE_MINUTES is required}
       FLINK_FEATURE_WATERMARK_SECONDS: ${FLINK_FEATURE_WATERMARK_SECONDS:?FLINK_FEATURE_WATERMARK_SECONDS is required}
       FLINK_FEATURE_IDLE_SECONDS: ${FLINK_FEATURE_IDLE_SECONDS:?FLINK_FEATURE_IDLE_SECONDS is required}
+      FLINK_CHECKPOINT_INTERVAL_SECONDS: ${FLINK_CHECKPOINT_INTERVAL_SECONDS:-60}
+      FLINK_CHECKPOINT_TIMEOUT_SECONDS: ${FLINK_CHECKPOINT_TIMEOUT_SECONDS:-120}
+      FLINK_CHECKPOINT_MIN_PAUSE_SECONDS: ${FLINK_CHECKPOINT_MIN_PAUSE_SECONDS:-10}
+      FLINK_CHECKPOINT_DIR: ${FLINK_CHECKPOINT_DIR:-file:///opt/flink/checkpoints}
+      FLINK_RESTART_ATTEMPTS: ${FLINK_RESTART_ATTEMPTS:-10}
+      FLINK_RESTART_DELAY_SECONDS: ${FLINK_RESTART_DELAY_SECONDS:-10}
       FLINK_PROPERTIES: |
         jobmanager.rpc.address: flink-jobmanager
         parallelism.default: 1
+        restart-strategy.type: fixed-delay
+        restart-strategy.fixed-delay.attempts: ${FLINK_RESTART_ATTEMPTS:-10}
+        restart-strategy.fixed-delay.delay: ${FLINK_RESTART_DELAY_SECONDS:-10} s
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8081/overview', timeout=3)"]
+      interval: 5s
+      timeout: 5s
+      retries: 60
     volumes:
       - ./flink/sql:/opt/flink/sql:ro
+      - ./flink/checkpoints:/opt/flink/checkpoints
       - ./flink/jobs:/opt/flink/jobs:ro
       - ./dbt/seeds:${FLINK_REFERENCE_DIR:?FLINK_REFERENCE_DIR is required}:ro
     depends_on:
+      flink-checkpoint-init:
+        condition: service_completed_successfully
       ais-kafka:
         condition: service_healthy
     networks:
@@ -325,15 +355,25 @@ services:
       FLINK_FEATURE_SLIDE_MINUTES: ${FLINK_FEATURE_SLIDE_MINUTES:?FLINK_FEATURE_SLIDE_MINUTES is required}
       FLINK_FEATURE_WATERMARK_SECONDS: ${FLINK_FEATURE_WATERMARK_SECONDS:?FLINK_FEATURE_WATERMARK_SECONDS is required}
       FLINK_FEATURE_IDLE_SECONDS: ${FLINK_FEATURE_IDLE_SECONDS:?FLINK_FEATURE_IDLE_SECONDS is required}
+      FLINK_CHECKPOINT_INTERVAL_SECONDS: ${FLINK_CHECKPOINT_INTERVAL_SECONDS:-60}
+      FLINK_CHECKPOINT_TIMEOUT_SECONDS: ${FLINK_CHECKPOINT_TIMEOUT_SECONDS:-120}
+      FLINK_CHECKPOINT_MIN_PAUSE_SECONDS: ${FLINK_CHECKPOINT_MIN_PAUSE_SECONDS:-10}
+      FLINK_CHECKPOINT_DIR: ${FLINK_CHECKPOINT_DIR:-file:///opt/flink/checkpoints}
+      FLINK_RESTART_ATTEMPTS: ${FLINK_RESTART_ATTEMPTS:-10}
+      FLINK_RESTART_DELAY_SECONDS: ${FLINK_RESTART_DELAY_SECONDS:-10}
       FLINK_PROPERTIES: |
         jobmanager.rpc.address: flink-jobmanager
         taskmanager.numberOfTaskSlots: 2
         parallelism.default: 1
+        restart-strategy.type: fixed-delay
+        restart-strategy.fixed-delay.attempts: ${FLINK_RESTART_ATTEMPTS:-10}
+        restart-strategy.fixed-delay.delay: ${FLINK_RESTART_DELAY_SECONDS:-10} s
     volumes:
       - ./dbt/seeds:${FLINK_REFERENCE_DIR:?FLINK_REFERENCE_DIR is required}:ro
+      - ./flink/checkpoints:/opt/flink/checkpoints
     depends_on:
       flink-jobmanager:
-        condition: service_started
+        condition: service_healthy
       ais-kafka:
         condition: service_healthy
     networks:
@@ -343,6 +383,41 @@ services:
   flink-feature-taskmanager:
     <<: *flink-taskmanager
     container_name: ais-flink-feature-taskmanager
+
+  flink-job-submitter:
+    # Only this one-shot client writes the root-owned named registry volume.
+    user: "0:0"
+    image: ais-flink:2.2.1
+    build:
+      context: ./flink
+      dockerfile: Dockerfile
+    profiles: ["streaming"]
+    command: ["python", "/opt/flink/scripts/submit_jobs.py"]
+    environment:
+      <<: *flink-environment
+      FLINK_REST_URL: http://flink-jobmanager:8081
+      FLINK_REQUIRED_TASKMANAGERS: "2"
+      FLINK_SUBMIT_TIMEOUT_SECONDS: "300"
+    volumes:
+      - ./flink/jobs:/opt/flink/jobs:ro
+      - ./flink/scripts:/opt/flink/scripts:ro
+      - ./dbt/seeds:${FLINK_REFERENCE_DIR:?FLINK_REFERENCE_DIR is required}:ro
+      - flink-submitter-state:/opt/flink/submitter-state
+      - ./flink/checkpoints:/opt/flink/checkpoints
+    depends_on:
+      ais-kafka:
+        condition: service_healthy
+      flink-jobmanager:
+        condition: service_healthy
+        restart: true
+      flink-taskmanager:
+        condition: service_started
+        restart: true
+      flink-feature-taskmanager:
+        condition: service_started
+        restart: true
+    networks:
+      - ais-network
 
 networks:
   ais-network:
@@ -357,3 +432,4 @@ volumes:
   clickhouse-data:
   clickhouse-logs:
   metabase_data:
+  flink-submitter-state:

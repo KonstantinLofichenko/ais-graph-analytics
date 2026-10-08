@@ -9,7 +9,7 @@ replace it for a production deployment.
 ## Start and stop
 
 For first installation and startup, follow the
-[fresh-clone quickstart](../README.md#fresh-clone-quickstart), including its `batch`
+[fresh-clone quickstart](../README.md#fresh-clone-quick-start), including its `batch`
 profile step. Stop only Airflow from the repository root with:
 
 ```sh
@@ -87,7 +87,7 @@ and do not accept an artificial day filter.
 
 ### Run the master
 
-After the [quickstart](../README.md#fresh-clone-quickstart), unpause the master and
+After the [quickstart](../README.md#fresh-clone-quick-start), unpause the master and
 its graph children. Do not run independent graph writers concurrently with it.
 
 ```sh
@@ -305,7 +305,7 @@ The exporter requires one valid durable `ConnectionSnapshot` owned by
 A published empty snapshot succeeds with zero exported rows; missing publication
 metadata fails. Every active endpoint
 must have valid metrics and a matching `analytics.ports FINAL` ID; validation
-finishes before any inserts. `snapshot_date` is the UTC date of `window_end`, so
+finishes before any inserts. `snapshot_date` is the UTC date of `window_start`, so
 retrying across a month boundary keeps the same partition and logical keys. Query
 with `FINAL` to deduplicate physical retry versions.
 
@@ -416,9 +416,11 @@ after verifying no backfill process or active workflow remains. Rerunning create
 new Airflow attempts for the same dates; it never deletes ClickHouse data and
 relies on existing pipeline idempotency and `ReplacingMergeTree` logical keys.
 
-For validation, `snapshot_date` is the UTC **window end** date. Activity dates
-September 28–29 therefore produce snapshot dates September 29–30; filter by the
-canonical `run_id` when checking those exact backfilled activity days.
+For validation, `snapshot_date` is the UTC **window-start** date. Activity dates
+September 28-29 therefore produce snapshot dates September 28-29. Graph views
+expose the same value as `activity_date`; retain `run_id` for exact snapshot checks.
+For older window-end exports, follow the controlled
+[snapshot-date correction](../pipelines/graph_metrics/README.md#storage-and-retries).
 
 All analytics are coordinated by `daily_ais_pipeline`; see the
 [full chain and default/historical commands](#consolidated-daily-ais-pipeline).

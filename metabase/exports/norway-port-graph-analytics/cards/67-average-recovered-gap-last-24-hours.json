@@ -1,0 +1,29 @@
+{
+  "cache_ttl": null,
+  "dataset_query": {
+    "database": 2,
+    "lib/type": "mbql/query",
+    "stages": [
+      {
+        "lib/type": "mbql.stage/native",
+        "native": "SELECT\n    round(avg(gap_duration_seconds) / 60, 1) AS avg_gap_minutes\nFROM analytics.ais_vessel_gap_events\nWHERE event_type = 'AIS_GAP_ENDED'\n  AND gap_ended_at >= now('UTC') - INTERVAL 24 HOUR\n  AND gap_duration_seconds IS NOT NULL;"
+      }
+    ]
+  },
+  "description": null,
+  "display": "scalar",
+  "id": 67,
+  "name": "Average Recovered Gap — Last 24 Hours",
+  "parameter_mappings": [],
+  "parameters": [],
+  "type": "question",
+  "visualization_settings": {
+    "column_settings": {
+      "[\"name\",\"avg_gap_minutes\"]": {
+        "decimals": 0,
+        "suffix": "min"
+      }
+    },
+    "scalar.segments": []
+  }
+}

@@ -22,7 +22,8 @@ class VesselFeatureTests(unittest.TestCase):
         modules = {name: MagicMock() for name in (
             'pyflink', 'pyflink.common', 'pyflink.common.watermark_strategy',
             'pyflink.datastream', 'pyflink.datastream.functions', 'pyflink.datastream.window',
-            'pyflink.datastream.connectors', 'pyflink.datastream.connectors.kafka')}
+            'pyflink.datastream.connectors', 'pyflink.datastream.connectors.base',
+            'pyflink.datastream.checkpoint_config', 'pyflink.datastream.connectors.kafka')}
         for name in ('AggregateFunction', 'ProcessWindowFunction'):
             setattr(modules['pyflink.datastream.functions'], name, type(name, (), {}))
         modules['pyflink.common.watermark_strategy'].TimestampAssigner = type('TimestampAssigner', (), {})
@@ -30,6 +31,7 @@ class VesselFeatureTests(unittest.TestCase):
         self.job = importlib.util.module_from_spec(spec)
         with patch.dict(sys.modules, modules):
             spec.loader.exec_module(self.job)
+        self.job.configure_checkpoints = MagicMock()
 
     def event(self, **changes):
         return json.dumps({'mmsi': 257039700, 'msgtime': '2026-10-06T12:52:48+00:00', **changes})
@@ -42,6 +44,48 @@ class VesselFeatureTests(unittest.TestCase):
         result = function.get_result(acc)
         result.pop('last_observation')
         return result
+
+    def test_name_is_parsed_and_latest_non_null_follows_event_time(self):
+        agg = self.job.VesselAggregate()
+        acc = agg.create_accumulator()
+        # Arrival order differs from event time; the latest observation has no name.
+        observations = [
+            ('2026-10-06T12:52:30Z', 'Latest named', 4),
+            ('2026-10-06T12:52:10Z', 'Older arriving later', 2),
+            ('2026-10-06T12:52:40Z', None, 6),
+            ('2026-10-06T12:52:20Z', 'Middle', None),
+        ]
+        for msgtime, name, speed in observations:
+            value = self.job.parse_event(self.event(msgtime=msgtime, name=name, speedOverGround=speed))
+            self.assertEqual(value['name'], name)
+            acc = agg.add(value, acc)
+        result = agg.get_result(acc)
+        self.assertEqual(result['name'], 'Latest named')
+        self.assertEqual((result['position_count'], result['avg_speed'], result['min_speed'], result['max_speed']), (4, 4, 2, 6))
+
+    def test_all_null_and_missing_names_emit_null(self):
+        agg = self.job.VesselAggregate()
+        acc = agg.create_accumulator()
+        for event in (self.event(), self.event(name=None)):
+            acc = agg.add(self.job.parse_event(event), acc)
+        self.assertIsNone(agg.get_result(acc)['name'])
+
+    def test_name_merge_is_independent_of_latest_reference_observation(self):
+        agg = self.job.VesselAggregate()
+        def pane(timestamp, name, ship_type):
+            return agg.add({'event_timestamp_ms': timestamp, 'name': name, 'speed': None,
+                            'ship_type': ship_type, 'navigation_status': None}, agg.create_accumulator())
+        named = pane(20, 'Latest named', 70)
+        newer_null = pane(30, None, 80)
+        old = pane(10, 'Older', 60)
+        for merged in (agg.merge(agg.merge(old, named), newer_null), agg.merge(newer_null, agg.merge(named, old))):
+            result = agg.get_result(merged)
+            self.assertEqual(result['name'], 'Latest named')
+            self.assertEqual(result['last_observation']['ship_type'], 80)
+        tied = pane(20, '', 70)
+        self.assertEqual(agg.get_result(agg.merge(named, tied))['name'], '')
+        self.assertEqual(agg.get_result(agg.add({'event_timestamp_ms': 20, 'name': 'Tie', 'speed': None,
+                                               'ship_type': None, 'navigation_status': None}, named))['name'], 'Tie')
 
     def test_msgtime_offset_and_milliseconds(self):
         parse = self.job.parse_msgtime
@@ -74,15 +118,15 @@ class VesselFeatureTests(unittest.TestCase):
         events = [self.job.parse_event(self.event()), self.job.parse_event(self.event(speedOverGround=None)),
                   self.job.parse_event(self.event(speedOverGround=0))]
         self.assertEqual(self.aggregate([event['speed'] for event in events]),
-                         {'position_count': 3, 'avg_speed': 0, 'min_speed': 0, 'max_speed': 0})
+                         {'name': None, 'position_count': 3, 'avg_speed': 0, 'min_speed': 0, 'max_speed': 0})
 
     def test_speed_aggregate(self):
         self.assertEqual(self.aggregate([2.0, None, 8.0, 5.0, 0.0]),
-                         {'position_count': 5, 'avg_speed': 3.75, 'min_speed': 0.0, 'max_speed': 8.0})
+                         {'name': None, 'position_count': 5, 'avg_speed': 3.75, 'min_speed': 0.0, 'max_speed': 8.0})
 
     def test_all_null_speed_window(self):
         self.assertEqual(self.aggregate([None, None]),
-                         {'position_count': 2, 'avg_speed': None, 'min_speed': None, 'max_speed': None})
+                         {'name': None, 'position_count': 2, 'avg_speed': None, 'min_speed': None, 'max_speed': None})
 
     def test_invalid_speed_does_not_discard_position(self):
         with self.assertLogs(self.job.LOGGER, level='WARNING'):
@@ -234,6 +278,8 @@ class VesselFeatureTests(unittest.TestCase):
         source.return_value.set_topics.return_value.set_group_id.assert_called_once_with(CONFIG['FLINK_FEATURE_GROUP_ID'])
         self.job.KafkaRecordSerializationSchema.builder.return_value.set_topic.assert_called_once_with(CONFIG['FLINK_FEATURE_TOPIC'])
         env = self.job.StreamExecutionEnvironment.get_execution_environment.return_value
+        self.job.configure_checkpoints.assert_called_once_with(env, 'features')
+        self.job.KafkaSink.builder.return_value.set_bootstrap_servers.return_value.set_delivery_guarantee.assert_called_once_with(self.job.DeliveryGuarantee.AT_LEAST_ONCE)
         stream = env.from_source.return_value.map.return_value.filter.return_value
         stream.assign_timestamps_and_watermarks.assert_called_once()
         window = stream.assign_timestamps_and_watermarks.return_value.key_by.return_value.window

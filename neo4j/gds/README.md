@@ -4,7 +4,7 @@ Manual Cypher workflow for inspecting the current published Port network. The
 [Airflow `ais_gds_metrics` DAG](../../airflow/README.md#run-gds-and-export-graph-metrics)
 automates the same algorithms, writes metrics, and validates existing visit lineage.
 The separate `ais_graph_metrics_export` DAG exports them to ClickHouse; the
-[daily master](../../airflow/README.md#sequential-daily-analytics) sequences both.
+[daily master](../../airflow/README.md#consolidated-daily-ais-pipeline) sequences both.
 Compose already enables the
 `graph-data-science` plugin; the manual scripts require no image rebuild.
 Run statements in Neo4j Browser (http://localhost:7474) using the same user and

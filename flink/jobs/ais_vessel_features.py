@@ -8,6 +8,8 @@ import os
 import re
 
 from common.reference_data import ReferenceData
+from common.checkpointing import configure_checkpoints, with_uid
+from pyflink.datastream.connectors.base import DeliveryGuarantee
 
 from pyflink.common import Duration, SimpleStringSchema, Time, Types, WatermarkStrategy
 from pyflink.common.watermark_strategy import TimestampAssigner
@@ -98,7 +100,7 @@ def parse_event(message):
         except (ValueError, OverflowError):
             LOGGER.warning("Ignoring invalid AIS feature speed; position is still counted")
             speed = None
-    return {"mmsi": int(mmsi), "event_timestamp_ms": timestamp, "speed": speed,
+    return {"mmsi": int(mmsi), "name": event.get("name"), "event_timestamp_ms": timestamp, "speed": speed,
             "ship_type": event.get("shipType"), "navigation_status": event.get("navigationalStatus")}
 
 
@@ -113,23 +115,26 @@ def event_key(event):
 
 class VesselAggregate(AggregateFunction):
     def create_accumulator(self):
-        # Existing metrics plus the latest event-time observation for reference attributes.
-        return (0, 0, 0.0, None, None, None)
+        # Existing metrics and reference observation; name has its own latest non-null timestamp.
+        return (0, 0, 0.0, None, None, None, None)
 
     def add(self, value, accumulator):
-        count, speed_count, total, minimum, maximum, latest = accumulator
+        count, speed_count, total, minimum, maximum, latest, latest_name = accumulator
         if latest is None or value["event_timestamp_ms"] >= latest["event_timestamp_ms"]:
             latest = {key: value[key] for key in ("event_timestamp_ms", "ship_type", "navigation_status")}
+        if value.get("name") is not None and (latest_name is None or value["event_timestamp_ms"] >= latest_name[0]):
+            latest_name = (value["event_timestamp_ms"], value["name"])
         speed = value["speed"]
         if speed is None:
-            return count + 1, speed_count, total, minimum, maximum, latest
+            return count + 1, speed_count, total, minimum, maximum, latest, latest_name
         return (count + 1, speed_count + 1, total + speed,
                 speed if minimum is None else min(minimum, speed),
-                speed if maximum is None else max(maximum, speed), latest)
+                speed if maximum is None else max(maximum, speed), latest, latest_name)
 
     def get_result(self, accumulator):
-        count, speed_count, total, minimum, maximum, latest = accumulator
-        return {"position_count": count, "avg_speed": total / speed_count if speed_count else None,
+        count, speed_count, total, minimum, maximum, latest, latest_name = accumulator
+        return {"name": latest_name[1] if latest_name is not None else None,
+                "position_count": count, "avg_speed": total / speed_count if speed_count else None,
                 "min_speed": minimum, "max_speed": maximum, "last_observation": latest}
 
     def merge(self, left, right):
@@ -138,8 +143,11 @@ class VesselAggregate(AggregateFunction):
         latest = left[5]
         if right[5] is not None and (latest is None or right[5]["event_timestamp_ms"] >= latest["event_timestamp_ms"]):
             latest = right[5]
+        latest_name = left[6]
+        if right[6] is not None and (latest_name is None or right[6][0] >= latest_name[0]):
+            latest_name = right[6]
         return (left[0] + right[0], left[1] + right[1], left[2] + right[2],
-                min(minima) if minima else None, max(maxima) if maxima else None, latest)
+                min(minima) if minima else None, max(maxima) if maxima else None, latest, latest_name)
 
 
 def format_window(mmsi, window_minutes, start_ms, end_ms, aggregate):
@@ -184,6 +192,7 @@ def main():
         raise SystemExit("FLINK_FEATURE_TOPIC must differ from FLINK_FEATURE_SOURCE_TOPIC")
     env = StreamExecutionEnvironment.get_execution_environment()
     env.set_parallelism(1)
+    configure_checkpoints(env, 'features')
     source = (
         KafkaSource.builder().set_bootstrap_servers(broker).set_topics(source_topic)
         .set_group_id(group).set_starting_offsets(KafkaOffsetsInitializer.latest())
@@ -191,6 +200,7 @@ def main():
     )
     sink = (
         KafkaSink.builder().set_bootstrap_servers(broker)
+        .set_delivery_guarantee(DeliveryGuarantee.AT_LEAST_ONCE)
         .set_record_serializer(KafkaRecordSerializationSchema.builder().set_topic(sink_topic)
                                .set_value_serialization_schema(SimpleStringSchema()).build())
         .build()
@@ -201,20 +211,21 @@ def main():
         .with_timestamp_assigner(AisTimestampAssigner())
     )
     keyed = (
-        env.from_source(source, WatermarkStrategy.no_watermarks(), source_topic)
+        with_uid(env.from_source(source, WatermarkStrategy.no_watermarks(), source_topic), 'features-source')
         .map(parse_event, output_type=Types.PICKLED_BYTE_ARRAY())
         .filter(lambda event: event is not None)
         .assign_timestamps_and_watermarks(watermarks)
         .key_by(event_key, key_type=Types.LONG())
     )
     branches = [
-        keyed.window(SlidingEventTimeWindows.of(Time.minutes(minutes), Time.minutes(slide)))
+        with_uid(keyed.window(SlidingEventTimeWindows.of(Time.minutes(minutes), Time.minutes(slide)))
         .aggregate(VesselAggregate(), FeatureWindow(reference_dir, minutes),
-                   accumulator_type=Types.PICKLED_BYTE_ARRAY(), output_type=Types.STRING())
+                   accumulator_type=Types.PICKLED_BYTE_ARRAY(), output_type=Types.STRING()),
+                 'features-window-' + str(minutes))
         for minutes in windows
     ]
     output = branches[0].union(*branches[1:]) if len(branches) > 1 else branches[0]
-    output.sink_to(sink)
+    output.sink_to(sink).uid('features-sink')
     env.execute(JOB_NAME)
 
 

@@ -1,0 +1,75 @@
+{
+  "cache_ttl": null,
+  "dataset_query": {
+    "database": 2,
+    "lib/type": "mbql/query",
+    "stages": [
+      {
+        "lib/type": "mbql.stage/native",
+        "native": "SELECT\n    mmsi,\n    argMax(name, gap_ended_at) AS name,\n    argMax(ship_category, gap_ended_at) AS ship_category,\n    count() AS recovered_gaps,\n    round(avg(gap_duration_seconds) / 60, 1) AS avg_gap_minutes,\n    round(max(gap_duration_seconds) / 60, 1) AS max_gap_minutes\nFROM analytics.ais_vessel_gap_events\nWHERE event_type = 'AIS_GAP_ENDED'\n  AND gap_ended_at >= now('UTC') - INTERVAL 24 HOUR\n  AND gap_duration_seconds IS NOT NULL\nGROUP BY mmsi\nORDER BY recovered_gaps DESC, max_gap_minutes DESC\nLIMIT 10;"
+      }
+    ]
+  },
+  "description": null,
+  "display": "table",
+  "id": 65,
+  "name": "Vessels with Most Recovered Gaps — Last 24 Hours",
+  "parameter_mappings": [],
+  "parameters": [],
+  "type": "question",
+  "visualization_settings": {
+    "column_settings": {
+      "[\"name\",\"avg_gap_minutes\"]": {
+        "column_title": "Average gap minutes",
+        "decimals": 0
+      },
+      "[\"name\",\"max_gap_minutes\"]": {
+        "column_title": "Maximum gap minutes",
+        "decimals": 0
+      },
+      "[\"name\",\"mmsi\"]": {
+        "column_title": "MMSI",
+        "decimals": 0,
+        "number_separators": "."
+      },
+      "[\"name\",\"name\"]": {
+        "column_title": "Vessel name"
+      },
+      "[\"name\",\"recovered_gaps\"]": {
+        "column_title": "Recovered gaps",
+        "decimals": 0
+      },
+      "[\"name\",\"ship_category\"]": {
+        "column_title": "Ship category"
+      }
+    },
+    "table.cell_column": "mmsi",
+    "table.columns": [
+      {
+        "enabled": true,
+        "name": "name"
+      },
+      {
+        "enabled": true,
+        "name": "ship_category"
+      },
+      {
+        "enabled": true,
+        "name": "recovered_gaps"
+      },
+      {
+        "enabled": true,
+        "name": "avg_gap_minutes"
+      },
+      {
+        "enabled": true,
+        "name": "max_gap_minutes"
+      },
+      {
+        "enabled": true,
+        "name": "mmsi"
+      }
+    ],
+    "table.pivot_column": "last_event_msgtime"
+  }
+}

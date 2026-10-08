@@ -5,7 +5,7 @@ Core with Docker ClickHouse; it does not require Airbyte or country data.
 
 ## 1. Infrastructure and manually downloaded HAIS files
 
-Use the [fresh-clone quickstart](../README.md#fresh-clone-quickstart) for the single
+Use the [fresh-clone quickstart](../README.md#fresh-clone-quick-start) for the single
 installation path: core services, bootstrap, local dbt setup, then HAIS ingestion.
 Fresh initialization and bootstrap create the required raw/analytics tables; do
 not run the legacy migration 001 on a fresh installation. The ClickHouse user
@@ -19,7 +19,7 @@ ingestion uses inclusive start and end dates; the dbt macro uses an exclusive en
 
 ## 2. Install and configure dbt
 
-Follow [quickstart step 11](../README.md#11-configure-dbt-from-the-profile-template)
+Follow [quickstart step 11](../README.md#4-configure-dbt)
 for the Python 3.11 virtual environment, pinned dependencies, ignored local profile,
 and environment credentials. The details below explain that configuration.
 

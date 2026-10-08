@@ -1,0 +1,147 @@
+{
+  "cache_ttl": null,
+  "dataset_query": {
+    "database": 2,
+    "lib/type": "mbql/query",
+    "stages": [
+      {
+        "lib/type": "mbql.stage/native",
+        "native": "WITH filtered AS\n(\n    SELECT *\n    FROM analytics.ais_vessel_features\n    WHERE 1 = 1\n      [[AND {{window_minutes}}]]\n),\nlatest AS\n(\n    SELECT max(window_end) AS latest_window_end\n    FROM filtered\n)\nSELECT\n    name,\n    mmsi,\n    ship_category,\n    last_navigation_status_name AS navigation_status,\n    position_count,\n    round(avg_speed, 2) AS avg_speed,\n    round(min_speed, 2) AS min_speed,\n    round(max_speed, 2) AS max_speed,\n    window_start,\n    window_end\nFROM filtered\nWHERE window_end = (SELECT latest_window_end FROM latest)\nORDER BY max_speed DESC NULLS LAST\nLIMIT 100;",
+        "template-tags": [
+          {
+            "default": [
+              5
+            ],
+            "dimension": [
+              "field",
+              {
+                "lib/uuid": "c0045943-82cb-4708-92f7-68d587a5a2e3"
+              },
+              358
+            ],
+            "display-name": "Window Minutes",
+            "id": "dad5e0d6-06b1-4280-9cec-87bdefa849db",
+            "name": "window_minutes",
+            "required": true,
+            "type": "dimension",
+            "widget-type": "id"
+          }
+        ]
+      }
+    ]
+  },
+  "description": null,
+  "display": "table",
+  "id": 63,
+  "name": "Latest Vessels Features",
+  "parameter_mappings": [],
+  "parameters": [
+    {
+      "default": [
+        5
+      ],
+      "id": "dad5e0d6-06b1-4280-9cec-87bdefa849db",
+      "isMultiSelect": false,
+      "name": "Window Minutes",
+      "required": true,
+      "slug": "window_minutes",
+      "target": [
+        "dimension",
+        [
+          "template-tag",
+          "window_minutes"
+        ]
+      ],
+      "type": "id"
+    }
+  ],
+  "type": "question",
+  "visualization_settings": {
+    "column_settings": {
+      "[\"name\",\"avg_speed\"]": {
+        "column_title": "Average speed",
+        "decimals": 2
+      },
+      "[\"name\",\"max_speed\"]": {
+        "column_title": "Maximun speed",
+        "decimals": 2
+      },
+      "[\"name\",\"min_speed\"]": {
+        "column_title": "Minimum speed"
+      },
+      "[\"name\",\"mmsi\"]": {
+        "column_title": "MMSI",
+        "number_separators": "."
+      },
+      "[\"name\",\"name\"]": {
+        "column_title": "Vessel name"
+      },
+      "[\"name\",\"navigation_status\"]": {
+        "column_title": "Navigation status"
+      },
+      "[\"name\",\"position_count\"]": {
+        "column_title": "Position count"
+      },
+      "[\"name\",\"ship_category\"]": {
+        "column_title": "Ship category"
+      },
+      "[\"name\",\"window_end\"]": {
+        "column_title": "Window end",
+        "date_abbreviate": true,
+        "time_enabled": "seconds",
+        "time_style": "HH:mm"
+      },
+      "[\"name\",\"window_start\"]": {
+        "column_title": "Window start",
+        "date_abbreviate": true,
+        "time_enabled": "seconds",
+        "time_style": "HH:mm"
+      }
+    },
+    "scalar.segments": [],
+    "table.cell_column": "mmsi",
+    "table.columns": [
+      {
+        "enabled": true,
+        "name": "name"
+      },
+      {
+        "enabled": true,
+        "name": "ship_category"
+      },
+      {
+        "enabled": true,
+        "name": "navigation_status"
+      },
+      {
+        "enabled": true,
+        "name": "avg_speed"
+      },
+      {
+        "enabled": true,
+        "name": "max_speed"
+      },
+      {
+        "enabled": true,
+        "name": "position_count"
+      },
+      {
+        "enabled": true,
+        "name": "min_speed"
+      },
+      {
+        "enabled": true,
+        "name": "window_start"
+      },
+      {
+        "enabled": true,
+        "name": "window_end"
+      },
+      {
+        "enabled": true,
+        "name": "mmsi"
+      }
+    ],
+    "table.pivot_column": "active_vessels"
+  }
+}
