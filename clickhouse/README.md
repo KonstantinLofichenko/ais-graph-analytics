@@ -23,6 +23,16 @@ nullable to preserve NULL if an ended event has no end timestamp.
 
 ## Startup and schema
 
+Compose runs [entrypoint.sh](entrypoint.sh) before the upstream image entrypoint.
+The upstream recursive data-directory ownership step fails on fresh Linux volumes
+if it reaches the read-only HAIS bind mount. The wrapper prunes only
+`/var/lib/clickhouse/user_files/hais` when changing ownership under the data or
+user-files directory; all other ownership operations and upstream initialization
+are preserved. HAIS remains read-only at its existing path, with unchanged
+`file('hais/...')` queries. This wrapper targets the pinned ClickHouse 26.3
+entrypoint's `chown -R owner directory` calls; revalidate fresh-volume startup
+when upgrading the image.
+
 ```sh
 docker compose --profile streaming up -d
 # Query via the existing container credentials, without printing the password:

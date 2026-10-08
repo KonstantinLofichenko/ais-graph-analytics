@@ -219,6 +219,7 @@ services:
 
   clickhouse:
     image: clickhouse/clickhouse-server:26.3
+    entrypoint: ["bash", "/opt/ais/clickhouse-entrypoint.sh"]
     container_name: ais-clickhouse
     environment:
       CLICKHOUSE_DB: ${CLICKHOUSE_DB:-ais}
@@ -233,6 +234,7 @@ services:
       - clickhouse-data:/var/lib/clickhouse
       - clickhouse-logs:/var/log/clickhouse-server
       - ./clickhouse/init:/docker-entrypoint-initdb.d
+      - ./clickhouse/entrypoint.sh:/opt/ais/clickhouse-entrypoint.sh:ro
       - ${HAIS_HOST_DIR:-./data/hais}:/var/lib/clickhouse/user_files/hais:ro
     ulimits:
       nofile:
