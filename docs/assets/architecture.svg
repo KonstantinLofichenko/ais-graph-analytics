@@ -127,11 +127,11 @@
 <polygon points="1450,1119 1438.2941876694151,1124.654551943446 1438.2941876694151,1113.345448056554" fill="#718098"/>
 <text x="1050" y="1190" text-anchor="middle" font-family="Arial,DejaVu Sans,sans-serif" font-size="20" font-weight="400" fill="#25324a">60s / EXACTLY_ONCE state / timeout 120s / max 1 / restart 10 x 10s / local-host durability; Kafka output at-least-once</text>
 <rect x="40" y="1250" width="2020" height="86" rx="16" fill="#f8fafc" stroke="#718098" stroke-width="2"/>
-<text x="1050.0" y="1284" text-anchor="middle" font-family="Arial,DejaVu Sans,sans-serif" font-size="24" font-weight="700" fill="#25324a">RETAINED LEGACY HISTORICAL CLICKHOUSE PATH</text>
-<text x="1050.0" y="1315" text-anchor="middle" font-family="Arial,DejaVu Sans,sans-serif" font-size="24" font-weight="400" fill="#25324a">HAIS GeoParquet -&gt; Airflow -&gt; raw.hais_positions -&gt; dbt normalization -&gt; raw.ais_positions</text>
+<text x="1050.0" y="1284" text-anchor="middle" font-family="Arial,DejaVu Sans,sans-serif" font-size="24" font-weight="700" fill="#25324a">HISTORICAL ORCHESTRATION - manual Airflow DAG</text>
+<text x="1050.0" y="1315" text-anchor="middle" font-family="Arial,DejaVu Sans,sans-serif" font-size="22" font-weight="400" fill="#25324a">check source -&gt; raw ingestion -&gt; raw validation -&gt; curated transformation -&gt; curated validation -&gt; summary</text>
 <rect x="40" y="1362" width="2020" height="100" rx="16" fill="#fff7e7" stroke="#718098" stroke-width="2"/>
 <text x="1050.0" y="1396" text-anchor="middle" font-family="Arial,DejaVu Sans,sans-serif" font-size="24" font-weight="700" fill="#25324a">IMPLEMENTED HISTORICAL LAKEHOUSE - manual Airflow load</text>
 <text x="1050.0" y="1427" text-anchor="middle" font-family="Arial,DejaVu Sans,sans-serif" font-size="20" font-weight="400" fill="#25324a">HAIS -&gt; MinIO source -&gt; PySpark raw -&gt; Iceberg raw -&gt; PySpark curated -&gt; Iceberg curated -&gt; Trino</text>
-<text x="1050.0" y="1455" text-anchor="middle" font-family="Arial,DejaVu Sans,sans-serif" font-size="20" font-weight="400" fill="#25324a">Airflow: check -&gt; raw -&gt; validate -&gt; curated -&gt; validate | REST catalog + MinIO warehouse</text>
+<text x="1050.0" y="1455" text-anchor="middle" font-family="Arial,DejaVu Sans,sans-serif" font-size="20" font-weight="400" fill="#25324a">MinIO source: ais-data/hais/source | RAW + CURATED warehouse | Iceberg REST catalog</text>
 <text x="40" y="1493" text-anchor="start" font-family="Arial,DejaVu Sans,sans-serif" font-size="20" font-weight="400" fill="#718098">Solid arrows: data flow. Recovery is a supporting layer. Metabase never queries Kafka Engine transport tables.</text>
 </svg>

@@ -14,8 +14,6 @@
 !pipelines/historic_ais/
 !pipelines/historic_ais/*.py
 !pipelines/historic_ais/requirements.txt
-!pipelines/hais/
-!pipelines/hais/*.py
 !pipelines/ai_enrichment/
 !pipelines/ai_enrichment/*.py
 !pipelines/ai_enrichment/requirements.txt

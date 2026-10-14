@@ -1,103 +1,31 @@
-# dbt and HAIS → canonical AIS
+# dbt ClickHouse analytics
 
-Run the commands below from the repository root. This workflow uses host-side dbt
-Core with Docker ClickHouse; it does not require Airbyte or country data.
+Run commands from the repository root. dbt builds the current ClickHouse vessel,
+port, graph and AI analytics from shared AIS sources. Historical HAIS Parquet
+loads and curated normalization are handled exclusively by the
+[lakehouse pipeline](../lakehouse/README.md); there is no HAIS-to-ClickHouse loader.
 
-## 1. Infrastructure and manually downloaded HAIS files
+## Configure
 
-Use the [fresh-clone quickstart](../README.md#fresh-clone-quick-start) for the single
-installation path: core services, bootstrap, local dbt setup, then HAIS ingestion.
-Fresh initialization and bootstrap create the required raw/analytics tables; do
-not run the legacy migration 001 on a fresh installation. The ClickHouse user
-needs to create models in `analytics`, read sources, and insert into
-`raw.ais_positions`.
-
-HAIS ordering/downloading remains manual. See
-[HAIS ingestion](../pipelines/hais/README.md) for file naming, permissions, audits,
-and recovery. Wait for raw ingestion success before the canonical load. HAIS file
-ingestion uses inclusive start and end dates; the dbt macro uses an exclusive end.
-
-## 2. Install and configure dbt
-
-Follow [quickstart step 11](../README.md#4-configure-dbt)
-for the Python 3.11 virtual environment, pinned dependencies, ignored local profile,
-and environment credentials. The details below explain that configuration.
-
-The profile name matches `dbt_project.yml`. Defaults are host `localhost`, HTTP
-port `8123`, and database/schema `analytics`. Override `DBT_CLICKHOUSE_HOST` and
-`DBT_CLICKHOUSE_PORT` if necessary; a client inside the Compose network would use
-host `clickhouse`. This template targets local unencrypted HTTP, not a cloud setup.
-See the [ClickHouse dbt configuration guide](https://clickhouse.com/docs/integrations/dbt/features-and-configurations).
-
-The password environment variable uses dbt's secret prefix. Do not put credentials
-in source-controlled files or enable shell tracing. dbt does **not** automatically
-load the repository `.env`; supply the same credentials through the environment.
-The local `dbt/profiles.yml` and virtual environment are ignored by Git. Reactivate
-and re-export the environment when opening a new shell. There are no dbt package
-dependencies, so `dbt deps` is not needed. Top-level Python dependencies are pinned;
-transitive dependencies and the Python runtime are not fully locked.
-
-All models currently use the profile's `analytics` schema; `staging/` and `marts/`
-are model folders, not separate databases. The profile creates no new layer naming
-scheme and does not change model logic.
-
-## 3. Create the staging view
+Follow [the project dbt setup](../README.md#4-configure-dbt) for the pinned
+Python dependencies, ignored local profile and password environment variable.
+The profile uses `analytics`, host `localhost`, HTTP port `8123`.
+Container clients use `DBT_CLICKHOUSE_HOST=ais-clickhouse`. dbt does not load
+`.env` automatically. Keep `dbt/profiles.yml` and credentials outside Git.
+There are no dbt package dependencies; top-level Python dependencies are pinned.
 
 ```sh
-dbt run --project-dir dbt --select stg_hais_positions
-```
-
-`raw.hais_positions` is source-faithful: original HAIS fields, sentinel values, and
-duplicates are preserved (geometry is omitted). The staging view maps HAIS fields,
-selects one row per `(mmsi, date_time_utc)` using the existing ranking, and applies
-the existing heading/course/turn-rate normalization. It leaves raw HAIS unchanged.
-It is a view over all raw HAIS rows, not a materialized date-range load.
-
-`raw.ais_positions` is the shared **canonical normalized table** used by downstream
-vessel and port analysis. HAIS ship type/name are unavailable and remain NULL;
-the existing staging model tags these records with `stream = 'hais'`. This workflow
-does not promise normalization beyond the transformations present in that model.
-
-## 4. Load a bounded range into canonical AIS
-
-```sh
-dbt run-operation load_hais_to_ais_positions --project-dir dbt \
-  --args '{"start_date":"2026-09-01","end_date":"2026-09-17"}'
-```
-
-The macro uses **start inclusive, end exclusive**, at UTC midnight:
-`[2026-09-01T00:00:00Z, 2026-09-17T00:00:00Z)`. This loads September 1–16.
-For September 1 alone, use `start_date=2026-09-01`, `end_date=2026-09-02`.
-Supply trusted, valid `YYYY-MM-DD` dates with start before end; the existing macro
-interpolates arguments into SQL and does not implement strict date validation.
-
-| Operation | Start | End | Included days |
-| --- | --- | --- | --- |
-| HAIS ingestion DAG | 2026-09-01 | 2026-09-16 | September 1–16 |
-| dbt canonical-load macro | 2026-09-01 | 2026-09-17 | September 1–16 |
-
-The macro performs an INSERT, not an incremental model or audit-controlled load.
-Reruns can add physical row versions. `raw.ais_positions` uses
-`ReplacingMergeTree(ingested_at)` with key `(mmsi, msgtime)`; use `FINAL` to read the
-logical result. This can replace canonical records from overlapping live/REST
-sources, including replacing richer name/ship-type values with HAIS NULLs. Review
-overlapping source ranges before loading. The macro has no separate success ledger.
-
-## 5. Standalone downstream check without countries
-
-```sh
+source .venv-dbt/bin/activate
+export DBT_PROFILES_DIR="$PWD/dbt"
+dbt parse --project-dir dbt --profiles-dir dbt
+dbt debug --project-dir dbt --profiles-dir dbt
 dbt build --project-dir dbt --select +vessels current_port_visits
 ```
 
-This setup/development command builds `stg_vessels`, `vessels`, and
-`current_port_visits` and runs their selected tests. No tests are currently
-declared specifically for `stg_hais_positions` or `current_port_visits`; build
-success alone is not a data-quality proof. `current_port_visits` can be empty
-until port-visit inputs have been generated. dbt does not run port detection or
-GDS, and the canonical-load macro is not automatically invoked by `dbt build`.
-For normal daily processing, use the [Airflow master](../airflow/README.md#consolidated-daily-ais-pipeline),
-which sequences the port-visit, Neo4j GDS, and graph-export child DAGs with the
-dbt and AI tasks.
+This builds `stg_vessels`, `vessels` and `current_port_visits`. Country-dependent
+models require the optional Airbyte country source. dbt does not execute port
+detection or GDS; the existing [daily Airflow master](../airflow/README.md#consolidated-daily-ais-pipeline)
+coordinates those analytics. Shared canonical AIS history remains intact.
 
 ## Vessel features, anomalies, and AI enrichment
 

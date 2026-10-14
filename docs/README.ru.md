@@ -172,18 +172,17 @@ docker compose exec -T flink-jobmanager /opt/flink/bin/flink run -d \
 восстановление состояния/таймеров/окон, новые completed checkpoints и поступление
 результатов; Kafka, ClickHouse, Neo4j, Airflow и Metabase не перезапускались.
 
-### 2.4 Исторический lakehouse и сохранённый legacy-путь
+### 2.4 Исторический lakehouse
 
 ```text
-Legacy: HAIS -> Airflow -> raw.hais_positions -> dbt -> raw.ais_positions
 Lakehouse: HAIS -> отдельная загрузка в MinIO -> PySpark -> Iceberg raw
   -> PySpark curated -> Iceberg curated -> Trino
 Airflow: check_source_files -> ingest_raw_iceberg -> validate_raw
   -> curate_hais -> validate_curated -> final_summary
 ```
 
-Lakehouse реализован локально. Старый ClickHouse/Airflow-путь сохранён без
-изменений. Live Kafka/Flink/ClickHouse/Neo4j/Metabase работает независимо.
+Lakehouse реализован локально и является единственным HAIS pipeline.
+Live Kafka/Flink/ClickHouse/Neo4j/Metabase работает независимо.
 MinIO хранит source Parquet в `s3://ais-data/hais/source/`, а таблицы Iceberg -
 в отдельном `s3://warehouse/`. REST catalog использует persistent SQLite.
 PySpark выполняет raw ingestion и curated normalization; Trino даёт SQL-доступ.
@@ -311,8 +310,7 @@ Bootstrap проверяет connector, создаёт Kafka ais.positions, loss
 raw.ais_positions - ReplacingMergeTree(ingested_at), sorting key (mmsi, msgtime),
 месячные UTC event-time partitions. Logical validation replacement convergence
 использует FINAL. Live и historical могут перекрываться; перед backfill проверяйте
-coverage. raw.hais_positions сохраняет HAIS source values, в том числе sentinels
-и duplicates, а dbt staging нормализует их.
+coverage. Исторический HAIS хранится исключительно в Iceberg.
 
 ### 5.2 Flink-derived streams
 
@@ -379,31 +377,16 @@ dbt debug --project-dir dbt --profiles-dir dbt
 | port_graph_communities | Аналитика communities |
 
 AIS code mappings - seeds. Country-dependent модели требуют raw.countries от
-optional Airbyte, обычный HAIS/canonical workflow от него не зависит.
+optional Airbyte. Исторический HAIS обрабатывается Spark/Iceberg, независимо от dbt.
 Детали incremental/history и точные команды: [dbt README](../dbt/README.md).
 
-## 7. Сохранённый legacy historical ClickHouse путь
+## 7. Исторический HAIS lakehouse
 
-Файлы hais_YYYY-MM-DD.snappy.parquet помещаются вручную в data/hais либо HAIS_HOST_DIR.
-Один каталог монтируется read-only в Airflow и ClickHouse. Файлы неизменны во время
-load; неполные downloads нельзя публиковать под финальным именем.
-Manual DAG ais_hais_historical_ingestion проверяет весь диапазон до вставок;
-успех определяется file_name + actual file_size. Successful versions пропускаются.
-Audit сохраняет running/success/failed; prior attempt без success требует operator
-review, автоматические task retries отключены. Raw insert и audit не атомарны;
-partial insert нельзя слепо перезагружать.
-
-| Операция | Начало | Конец |
-| --- | --- | --- |
-| HAIS ingestion | Inclusive calendar date | Inclusive calendar date |
-| Canonical dbt load | Inclusive | Exclusive UTC midnight |
-| Daily analytics | UTC activity date | Следующая UTC граница |
-
-Например, ingestion September 1-16 заканчивается 2026-09-16, canonical macro
-использует end_date 2026-09-17. Historical source может быть беднее live по
-name/type, поэтому overlapping backfill требует проверки attributes.
-[HAIS workflow](../pipelines/hais/README.md) и отдельный
-[Historic REST repair](../pipelines/historic_ais/README.md) не входят в daily master.
+Файлы проверяются и загружаются отдельно в MinIO. Manual DAG
+`ais_hais_lakehouse_load` выполняет Spark raw/curated и Trino validation; в
+ClickHouse HAIS больше не загружается. Команды, схема и ограничения описаны в
+разделе 2.4 и [lakehouse README](../lakehouse/README.md). Shared AIS history и
+суточная аналитика сохранены. Отдельный BarentsWatch REST loader не относится к HAIS.
 
 ## 8. Ежедневная оркестрация Airflow
 
@@ -612,8 +595,7 @@ checkpoint directory нужны для recovery. Для restart только Fli
 | clickhouse/README.md | Derived ingestion, schemas, monitoring |
 | metabase/README.md | Шесть tabs, cards и export/import |
 | airflow/README.md | Orchestration и batch operations |
-| dbt/README.md | Models, seeds и canonical load |
-| pipelines/hais/README.md | HAIS file/audit workflow |
+| dbt/README.md | ClickHouse models, seeds и аналитика |
 | pipelines/historic_ais/README.md | Historic REST repair |
 | pipelines/port_visits/README.md | Visit detection и publication |
 | pipelines/graph_metrics/README.md | Graph export/history |

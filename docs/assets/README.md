@@ -8,8 +8,8 @@ content, defined in [`render_architecture.py`](render_architecture.py).
 The diagram distinguishes raw AIS history, two PyFlink derived streams and the
 Neo4j/GDS path. Metabase reads their persistent ClickHouse outputs. The supporting
 recovery band uses dotted links for checkpoint/restore operations, not AIS record
-flow. The existing HAIS-to-ClickHouse batch path is separate from the amber
-**implemented** MinIO/PySpark/Iceberg/Trino path, manually orchestrated by Airflow.
+flow. Historical HAIS uses the amber MinIO/PySpark/Iceberg/Trino path,
+with a separate manual Airflow orchestration band.
 
 This is a high-level data/state-flow diagram: Compose plumbing, optional country
 reference ingestion, individual daily DAG dependencies and infrastructure tools

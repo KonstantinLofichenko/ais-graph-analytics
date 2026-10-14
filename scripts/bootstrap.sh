@@ -32,8 +32,6 @@ connector_name=$(jq -er '.name | @uri' "$connector_config" 2>/dev/null) || fail 
 # Explicit allowlist: 001 is an existing-installation migration, never bootstrap it.
 migrations=(
   clickhouse/migrations/003_port_graph_metrics.sql
-  clickhouse/migrations/004_hais_positions.sql
-  clickhouse/migrations/005_hais_ingestion_runs.sql
   clickhouse/migrations/006_graph_community_labels.sql
   clickhouse/migrations/007_port_visits_tombstones.sql
   clickhouse/migrations/008_port_graph_metrics_tombstones.sql

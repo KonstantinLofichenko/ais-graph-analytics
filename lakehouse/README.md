@@ -80,8 +80,8 @@ services with consistent environment values.
 
 The `hais-upload` service uses `HAIS_UPLOAD_HOST_DIR`, mounted read-only at
 `/input`. Set this in your local `.env` to the extracted latest HAIS download
-directory. It is separate from `HAIS_HOST_DIR`, which continues to serve the
-existing ClickHouse/Airflow historical path. A nonexistent upload directory fails
+directory. It is used only by the separate upload client; neither Airflow nor ClickHouse
+mounts the host HAIS directory. A nonexistent upload directory fails
 instead of being created automatically. Only `*.parquet` files are copied,
 retaining relative paths, to `s3://ais-data/hais/source/`; the existing Iceberg
 warehouse remains `s3://warehouse/`.
@@ -124,7 +124,6 @@ Environment variables:
 | Variable | Purpose / default |
 | --- | --- |
 | `HAIS_UPLOAD_HOST_DIR` | Host directory mounted read-only by `hais-upload`; default `./data/hais`. |
-| `HAIS_HOST_DIR` | Existing historical ClickHouse/Airflow input; unchanged. |
 | `HAIS_SOURCE_URI` | Spark input prefix; `s3a://ais-data/hais/source/`. |
 | `MINIO_ROOT_USER`, `MINIO_ROOT_PASSWORD` | Shared local credentials for upload, Arrow, S3A and Iceberg. |
 
@@ -225,8 +224,7 @@ telemetry and queries succeeded.
 `iceberg.hais_raw.ais_positions` → PySpark →
 `iceberg.hais_curated.ais_positions` reuses the same Spark service, REST catalog,
 MinIO warehouse and Trino Iceberg catalog. It reads only the raw Iceberg table;
-it does not upload, alter raw data or change the historical ClickHouse/Airflow
-path. The same jobs can run manually or through the manual-trigger Airflow DAG below.
+it does not upload or alter raw data. The same jobs can run manually or through the manual-trigger Airflow DAG below.
 
 Run after the raw table exists:
 
@@ -317,7 +315,7 @@ driver. Keep the persistent MinIO and REST catalog volumes.
 
 DAG ID: **`ais_hais_lakehouse_load`**. It has `schedule=None`, `catchup=False`,
 `max_active_runs=1` and serial task execution. No Kafka, Flink, ClickHouse or upload
-step is included. The old `ais_hais_historical_ingestion` DAG remains intact.
+step is included. This is the only historical HAIS load implementation.
 
 ```text
 check_source_files → ingest_raw_iceberg → validate_raw
@@ -398,9 +396,9 @@ Two scheduler-driven manual runs were validated on 2026-10-14:
 `lakehouse_20261014_validation_1` and `lakehouse_20261014_validation_2`. All six
 tasks succeeded in both. Each reported 30 source files and 23,295,797 raw/curated
 rows; rerunning did not duplicate rows. UI API registration and task listing were
-verified. The final isolated CI-style suite passed 272 tests, including eight new
-DAG/validator tests. Historical ClickHouse/Airflow code and existing live services
-were unchanged.
+verified. After legacy cleanup, the isolated CI-style suite passed 259 tests, including
+eight lakehouse DAG/validator tests; Flink, Spark and producer suites brought the
+unit-test total to 333. Existing live services remained unchanged.
 
 This is a local Docker execution model: the Airflow socket grants control of the
 local Docker daemon. It is not a remote Spark cluster/security boundary. The

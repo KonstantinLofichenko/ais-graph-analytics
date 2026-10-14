@@ -10,7 +10,6 @@ for suite in \
   pipelines/port_connections/tests \
   pipelines/graph_metrics/tests \
   pipelines/historic_ais/tests \
-  pipelines/hais/tests \
   pipelines/ai_enrichment/tests \
   airbyte/tests \
   metabase/tests \

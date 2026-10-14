@@ -122,8 +122,15 @@ def main():
             wait_for(lambda: any(p['mmsi'] == 999999982 and p['event_type'] == 'AIS_GAP_DETECTED' for p in consume(topics[1])), 'restored B processing-time timer')
             gaps = consume(topics[1])
             a = [p for p in gaps if p['mmsi'] == 999999981]
-            assert [p['event_type'] for p in a].count('AIS_GAP_DETECTED') == 1, a
-            assert [p['event_type'] for p in a].count('AIS_GAP_ENDED') == 1, a
+            # A can legitimately time out again after the resumed observation if
+            # recovery/consumer polling takes over 30 seconds. Check the original
+            # gap identity, rather than counting later independent gap cycles.
+            original = [p for p in a if p['event_type'] == 'AIS_GAP_DETECTED'
+                        and p['last_event_msgtime'] == '2026-10-08T00:00:02Z']
+            ended = [p for p in a if p['event_type'] == 'AIS_GAP_ENDED']
+            assert len(original) == 1 and len(ended) == 1, a
+            assert ended[0]['gap_detected_at'] == original[0]['gap_detected_at'], a
+            assert ended[0]['resumed_event_msgtime'] == '2026-10-08T00:00:04Z', a
             # Advance event time beyond all initial window ends using another key.
             kafka('kafka-console-producer.sh', '--topic', topics[0], payload=json.dumps({'mmsi': 999999983, 'msgtime': '2026-10-08T01:00:31Z'}) + '\n')
             def feature_results():

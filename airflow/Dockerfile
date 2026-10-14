@@ -8,7 +8,6 @@ COPY --chown=airflow:root pipelines/port_visits /opt/ais/pipelines/port_visits
 COPY --chown=airflow:root pipelines/port_connections /opt/ais/pipelines/port_connections
 COPY --chown=airflow:root pipelines/graph_metrics /opt/ais/pipelines/graph_metrics
 COPY --chown=airflow:root pipelines/historic_ais /opt/ais/pipelines/historic_ais
-COPY --chown=airflow:root pipelines/hais /opt/ais/pipelines/hais
 COPY --chown=airflow:root pipelines/ai_enrichment /opt/ais/pipelines/ai_enrichment
 COPY --chown=airflow:root dbt/dbt_project.yml /opt/ais/dbt/dbt_project.yml
 COPY --chown=airflow:root dbt/profiles.yml.example /opt/ais/dbt/profiles.yml

@@ -14,9 +14,8 @@ AIS Graph Analytics combines two ingestion modes:
 
 - **Live:** BarentsWatch AIS -> Python producer -> Kafka.
 - **Historical lakehouse:** MinIO source -> PySpark -> Iceberg raw/curated -> Trino, with manual Airflow orchestration.
-- **Retained legacy historical path:** HAIS GeoParquet -> Airflow -> ClickHouse.
 
-The live and legacy paths feed canonical ClickHouse history used by dbt; the lakehouse keeps its raw/curated tables in Iceberg. Neo4j stores graph/current-state structures, GDS produces graph metrics, OpenAI enriches selected daily vessel anomalies, and Metabase provides user-facing analytics.
+The live path feeds ClickHouse history used by dbt; historical HAIS raw/curated tables live in Iceberg. Neo4j stores graph/current-state structures, GDS produces graph metrics, OpenAI enriches selected daily vessel anomalies, and Metabase provides user-facing analytics.
 
 The design separates responsibilities deliberately:
 
@@ -175,17 +174,6 @@ docker compose exec -T flink-jobmanager /opt/flink/bin/flink run -d \
 
 ### 2.2 Historical path
 
-```text
-HAIS GeoParquet files
-  -> Airflow historical ingestion
-  -> raw.hais_positions
-  -> dbt staging normalization
-  -> canonical load macro
-  -> raw.ais_positions
-```
-
-The HAIS landing layer is intentionally source-faithful. Normalization happens before loading into the canonical AIS table.
-
 #### Implemented historical lakehouse
 
 ```text
@@ -196,9 +184,8 @@ Verified host HAIS Parquet -> separate upload -> MinIO source
 Airflow: source check -> raw -> validate -> curated -> validate -> summary
 ```
 
-This path is deployed locally under the `lakehouse` profile. The preceding
-ClickHouse HAIS path is intentionally retained as legacy; neither it nor live
-Flink processing is part of the new DAG.
+This path is deployed locally under the `lakehouse` profile. Its manual Airflow
+DAG orchestrates only historical lakehouse loads; live Flink processing is independent.
 
 | Component | Current role |
 | --- | --- |
@@ -372,7 +359,7 @@ The bootstrap script:
 
 1. Validates local connector configuration.
 2. Creates/verifies Kafka topic `ais.positions`.
-3. Creates/migrates the Flink-derived analytical tables without dropping legacy history, then applies additive ClickHouse migrations `003` through `010`.
+3. Creates/migrates the Flink-derived analytical tables without dropping legacy history, then applies the remaining additive graph, port and AI migrations.
 4. Applies Neo4j constraints.
 5. Creates/updates the Neo4j Kafka sink connector.
 
@@ -391,10 +378,6 @@ Important semantics:
 - engine: `ReplacingMergeTree(ingested_at)`;
 - use `FINAL` for logical validation when replacement convergence matters;
 - live and historical sources can overlap, so source coverage should be reviewed before large backfills.
-
-### 5.2 Historical HAIS
-
-`raw.hais_positions` preserves HAIS source values for auditability. dbt staging normalizes source details before canonical loading.
 
 ### 5.3 Derived stream history
 
@@ -459,25 +442,16 @@ Current pinned versions are dbt Core `1.12.5` and `dbt-clickhouse` `1.10.3`.
 
 Static AIS ship-type and navigation-status mappings are dbt seeds, not ad-hoc SQL embedded throughout models.
 
-## 7. Retained legacy historical ClickHouse processing
+## 7. Historical HAIS lakehouse processing
 
-Historical files are manually placed in `data/hais` with names such as:
+Historical files are verified and uploaded separately to MinIO. The manual DAG
+`ais_hais_lakehouse_load` executes existing Spark raw/curated jobs and Trino
+validation. It never inserts historical HAIS into ClickHouse. See section 2.2
+and the [lakehouse guide](../lakehouse/README.md) for startup, upload, schema,
+normalization, partitioning, idempotency, retries and validation commands.
 
-```text
-hais_2026-09-01.snappy.parquet
-```
-
-The historical Airflow ingestion records audit/retry status. After successful source ingestion, dbt staging plus the canonical-load macro populates `raw.ais_positions`.
-
-Date convention:
-
-| Operation | Start | End |
-| --- | --- | --- |
-| HAIS file ingestion | Inclusive | Inclusive |
-| Canonical dbt load | Inclusive | Exclusive UTC midnight |
-| Daily analytics | Activity date / UTC window start | Next UTC boundary |
-
-Avoid uncontrolled overlapping re-loads: the canonical table can converge duplicate versions, but backfills can still replace attributes such as vessel names/types if the historical source is less complete than live data.
+Existing shared AIS history and daily analytics remain intact. Additional
+BarentsWatch REST ingestion is a separate optional component, not the HAIS path.
 
 ## 8. Daily Airflow orchestration
 
@@ -748,7 +722,6 @@ Delete only disposable test images, not the project runtime images or upstream d
 | `README.md` | Project overview and quick start |
 | `docs/README.md`, `docs/README.ru.md` | English/Russian operational and architectural sources |
 | `docs/assets/README.md` | Shared diagram and regeneration |
-| `pipelines/hais/README.md` | HAIS ingestion and audit/recovery |
 | `pipelines/historic_ais/README.md` | Historic REST repair/backfill |
 | `airbyte/README.md` | Optional country enrichment exports |
 | `data/ports/README.md` | Dated pilot port reference |
