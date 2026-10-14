@@ -32,3 +32,8 @@
 !clickhouse/
 !clickhouse/init/
 !clickhouse/init/02_port_visits.sql
+
+!lakehouse/
+!lakehouse/validate_raw.py
+!lakehouse/validate_curated.py
+!lakehouse/validate_curated.sql

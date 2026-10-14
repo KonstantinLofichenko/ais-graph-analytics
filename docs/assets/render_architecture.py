@@ -14,8 +14,8 @@ HERE = Path(__file__).resolve().parent
 image = Image.new('RGB', (WIDTH * SCALE, HEIGHT * SCALE), 'white')
 draw = ImageDraw.Draw(image)
 svg = [f'<svg xmlns="http://www.w3.org/2000/svg" width="{WIDTH}" height="{HEIGHT}" viewBox="0 0 {WIDTH} {HEIGHT}">',
-       '<title>AIS Graph Analytics: current live architecture and planned historical lakehouse</title>',
-       '<desc>Raw, PyFlink and graph paths feed persistent ClickHouse tables and Metabase. Dashed recovery links represent host-mounted checkpoints, not AIS data. The historical lakehouse is planned.</desc>',
+       '<title>AIS Graph Analytics: current live and implemented historical lakehouse architecture</title>',
+       '<desc>Raw, PyFlink and graph paths feed persistent ClickHouse tables and Metabase. Dashed recovery links represent host-mounted checkpoints, not AIS data. The historical lakehouse uses MinIO, an Iceberg REST catalog, Spark raw/curated jobs and a manual Airflow DAG.</desc>',
        '<rect width="100%" height="100%" fill="white"/>']
 INK, EDGE = '#25324a', '#718098'
 COLORS = {'kafka': '#edf3ff', 'flink': '#f3efff', 'store': '#ecfaf2', 'graph': '#eef6ff',
@@ -72,7 +72,7 @@ def box(x,y,w,h,title,body=(),kind='plain',size=23,dashed=False):
 
 text(40,48,'AIS Graph Analytics',36,True,'start')
 text(40,87,'Current live runtime, persistent analytics and checkpoint recovery',24,False,'start')
-text(2060,87,'Updated 2026-10-08',20,False,'end',EDGE)
+text(2060,87,'Updated 2026-10-14',20,False,'end',EDGE)
 text(40,112,'Both PyFlink jobs enrich reference codes from dbt seeds',18,False,'start',EDGE)
 box(250,125,400,78,'BarentsWatch AIS',kind='plain')
 box(800,125,400,78,'Python AIS producer',kind='plain')
@@ -120,8 +120,8 @@ box(1450,1078,580,82,'Restore Kafka offsets, state and timers',('Gap ValueState 
 line([(560,1119),(655,1119)],dashed=True)
 line([(1355,1119),(1450,1119)],dashed=True)
 text(1050,1190,'60s / EXACTLY_ONCE state / timeout 120s / max 1 / restart 10 x 10s / local-host durability; Kafka output at-least-once',20)
-box(40,1250,2020,86,'IMPLEMENTED HISTORICAL INGESTION',('HAIS GeoParquet -> Airflow -> raw.hais_positions -> dbt normalization -> raw.ais_positions',),kind='plain',size=24)
-box(40,1362,2020,100,'PLANNED HISTORICAL LAKEHOUSE - future, not deployed',('HAIS GeoParquet -> Airflow -> PySpark -> Iceberg -> Trino',),kind='future',size=26,dashed=True)
+box(40,1250,2020,86,'RETAINED LEGACY HISTORICAL CLICKHOUSE PATH',('HAIS GeoParquet -> Airflow -> raw.hais_positions -> dbt normalization -> raw.ais_positions',),kind='plain',size=24)
+box(40,1362,2020,100,'IMPLEMENTED HISTORICAL LAKEHOUSE - manual Airflow load',('HAIS -> MinIO source -> PySpark raw -> Iceberg raw -> PySpark curated -> Iceberg curated -> Trino', 'Airflow: check -> raw -> validate -> curated -> validate | REST catalog + MinIO warehouse'),kind='future',size=20)
 text(40,1493,'Solid arrows: data flow. Recovery is a supporting layer. Metabase never queries Kafka Engine transport tables.',20,False,'start',EDGE)
 svg.append('</svg>')
 (HERE/'architecture.svg').write_text('\n'.join(svg)+'\n')

@@ -424,3 +424,17 @@ For older window-end exports, follow the controlled
 
 All analytics are coordinated by `daily_ais_pipeline`; see the
 [full chain and default/historical commands](#consolidated-daily-ais-pipeline).
+
+
+## Manual historical lakehouse load
+
+`ais_hais_lakehouse_load` orchestrates the existing MinIO → Spark raw Iceberg →
+validation → Spark curated Iceberg → Trino validation path. It is manual-only
+(`schedule=None`, `catchup=False`), has one active run, and does not upload source
+files or include live services. The old `ais_hais_historical_ingestion` DAG is
+unchanged. See [lakehouse DAG startup, triggering, task flow and logs](../lakehouse/README.md#manual-historical-airflow-dag).
+
+Spark jobs run in disposable containers through the existing Docker provider;
+Airflow needs the local Docker socket and the rebuilt Spark image. Validators
+run in Airflow using container-network endpoints. Validation failures stop the
+chain without retries; transient source/Spark failures have bounded retries.

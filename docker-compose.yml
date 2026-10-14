@@ -16,6 +16,13 @@ services:
       AIRFLOW__CORE__DAGS_FOLDER: /opt/ais/airflow/dags
       AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_USERS: "admin:admin"
       AIRFLOW__CORE__PARALLELISM: "1"
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-ais-local}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-ais-local-development}
+      HAIS_SOURCE_URI: ${HAIS_SOURCE_URI:-s3a://ais-data/hais/source/}
+      TRINO_URL: http://trino:8080
+      ICEBERG_REST_URL: http://iceberg-rest:8181
+      LAKEHOUSE_SPARK_IMAGE: ${LAKEHOUSE_SPARK_IMAGE:-ais-spark:3.5.7-iceberg-1.10.1}
+      LAKEHOUSE_DOCKER_NETWORK: ais-network
       CLICKHOUSE_URL: http://ais-clickhouse:8123
       CLICKHOUSE_USER: ${CLICKHOUSE_USER:-default}
       CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD}
@@ -54,6 +61,7 @@ services:
       - "127.0.0.1:8080:8080"
     volumes:
       - airflow-data:/opt/airflow
+      - /var/run/docker.sock:/var/run/docker.sock
       - ${HAIS_HOST_DIR:-./data/hais}:/opt/ais/data/hais:ro
     restart: unless-stopped
     stop_grace_period: 60s
@@ -421,6 +429,136 @@ services:
     networks:
       - ais-network
 
+  minio:
+    image: ais-minio:2025-10-15
+    build: ./lakehouse/minio
+    profiles: ["lakehouse"]
+    command: server /data --console-address ":9001"
+    environment: &minio-environment
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-ais-local}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-ais-local-development}
+    ports:
+      - "127.0.0.1:9002:9000"
+      - "127.0.0.1:9003:9001"
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    networks:
+      - ais-network
+
+  minio-init:
+    image: ais-minio:2025-10-15
+    build: ./lakehouse/minio
+    profiles: ["lakehouse"]
+    environment: *minio-environment
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - |
+        mc alias set local http://minio:9000 "$${MINIO_ROOT_USER}" "$${MINIO_ROOT_PASSWORD}" >/dev/null
+        mc mb --ignore-existing local/warehouse
+        mc mb --ignore-existing local/ais-data
+    depends_on:
+      minio:
+        condition: service_healthy
+    networks:
+      - ais-network
+
+  iceberg-rest:
+    image: apache/iceberg-rest-fixture:1.10.1
+    profiles: ["lakehouse"]
+    environment:
+      AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-ais-local}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-ais-local-development}
+      AWS_REGION: us-east-1
+      CATALOG_WAREHOUSE: s3://warehouse/
+      CATALOG_URI: jdbc:sqlite:/tmp/iceberg_catalog.db
+      CATALOG_IO__IMPL: org.apache.iceberg.aws.s3.S3FileIO
+      CATALOG_S3_ENDPOINT: http://minio:9000
+      CATALOG_S3_PATH__STYLE__ACCESS: "true"
+    ports:
+      - "127.0.0.1:8181:8181"
+    volumes:
+      - iceberg-catalog-data:/tmp
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8181/v1/config"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    depends_on:
+      minio-init:
+        condition: service_completed_successfully
+    networks:
+      - ais-network
+
+  trino:
+    image: trinodb/trino:483
+    profiles: ["lakehouse"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-ais-local}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-ais-local-development}
+    ports:
+      - "127.0.0.1:8090:8080"
+    volumes:
+      - ./lakehouse/trino/iceberg.properties:/etc/trino/catalog/iceberg.properties:ro
+      - ./lakehouse/trino/jvm.config:/etc/trino/jvm.config:ro
+      - ./lakehouse/trino/config.properties:/etc/trino/config.properties:ro
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8080/v1/info | grep -q '\"starting\":false'"]
+      interval: 5s
+      timeout: 5s
+      start_period: 30s
+      retries: 60
+    depends_on:
+      iceberg-rest:
+        condition: service_healthy
+    networks:
+      - ais-network
+
+  hais-upload:
+    image: ais-minio:2025-10-15
+    build: ./lakehouse/minio
+    profiles: ["lakehouse"]
+    environment: *minio-environment
+    entrypoint: ["/bin/sh", "/opt/ais/upload_hais.sh"]
+    volumes:
+      - type: bind
+        source: ${HAIS_UPLOAD_HOST_DIR:-./data/hais}
+        target: /input
+        read_only: true
+        bind:
+          create_host_path: false
+      - ./lakehouse/upload_hais.sh:/opt/ais/upload_hais.sh:ro
+    depends_on:
+      minio-init:
+        condition: service_completed_successfully
+    networks:
+      - ais-network
+
+  spark:
+    image: ais-spark:3.5.7-iceberg-1.10.1
+    build:
+      context: ./lakehouse
+      dockerfile: spark/Dockerfile
+    profiles: ["lakehouse"]
+    # One-shot local driver; no cluster daemon or additional host ports.
+    entrypoint: ["/opt/spark/bin/spark-submit", "--master", "local[2]", "--driver-memory", "2g"]
+    command: ["/opt/ais/jobs/ingest_hais_raw.py"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-ais-local}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-ais-local-development}
+      HAIS_SOURCE_URI: ${HAIS_SOURCE_URI:-s3a://ais-data/hais/source/}
+    volumes:
+      - ./lakehouse/spark/jobs:/opt/ais/jobs:ro
+    depends_on:
+      iceberg-rest:
+        condition: service_healthy
+    networks:
+      - ais-network
+
 networks:
   ais-network:
     name: ais-network
@@ -435,3 +573,5 @@ volumes:
   clickhouse-logs:
   metabase_data:
   flink-submitter-state:
+  minio-data:
+  iceberg-catalog-data:

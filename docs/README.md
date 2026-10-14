@@ -6,22 +6,24 @@ platform. The [English](AIS-Graph-Analytics-ENG.pdf) and
 [Russian](AIS-Graph-Analytics-RUS.pdf) PDFs are regenerated from the current
 English and [Russian Markdown](README.ru.md), using the shared architecture
 asset. See [PDF regeneration](#pdf-regeneration) below. Documentation reviewed:
-2026-10-08.
+2026-10-14.
 
 ## 1. Platform overview
 
 AIS Graph Analytics combines two ingestion modes:
 
 - **Live:** BarentsWatch AIS -> Python producer -> Kafka.
-- **Historical:** HAIS GeoParquet -> Airflow -> ClickHouse.
+- **Historical lakehouse:** MinIO source -> PySpark -> Iceberg raw/curated -> Trino, with manual Airflow orchestration.
+- **Retained legacy historical path:** HAIS GeoParquet -> Airflow -> ClickHouse.
 
-Both feed a canonical ClickHouse AIS history used by dbt analytical models. Neo4j stores graph/current-state structures, GDS produces graph metrics, OpenAI enriches selected daily vessel anomalies, and Metabase provides user-facing analytics.
+The live and legacy paths feed canonical ClickHouse history used by dbt; the lakehouse keeps its raw/curated tables in Iceberg. Neo4j stores graph/current-state structures, GDS produces graph metrics, OpenAI enriches selected daily vessel anomalies, and Metabase provides user-facing analytics.
 
 The design separates responsibilities deliberately:
 
 | Concern | System of record / primary engine |
 | --- | --- |
 | Raw event history | ClickHouse |
+| Historical lakehouse | MinIO + Iceberg REST + PySpark + Trino |
 | Analytical transformations | dbt on ClickHouse |
 | Current vessel graph state | Neo4j |
 | Port/community graph analytics | Neo4j GDS + ClickHouse snapshots |
@@ -38,7 +40,7 @@ The design separates responsibilities deliberately:
 
 [Zoomable SVG](assets/architecture.svg) · [Editable diagram and regeneration](assets/README.md).
 Solid arrows carry data; the separate dotted recovery layer carries state
-operations. The amber historical lakehouse path is explicitly planned.
+operations. The amber historical lakehouse path is implemented as a manual Airflow load.
 
 ### 2.1 Live path
 
@@ -132,7 +134,7 @@ or protection against host/disk loss, and Kafka must retain the checkpoint's
 required offsets.
 
 See the [Flink operations and recovery tests](../flink/README.md) and
-[ClickHouse ingestion guide](../clickhouse/README.md). The 2026-10-08 recovery
+[ClickHouse ingestion guide](../clickhouse/README.md). The 2026-10-14 recovery
 validation passed a Flink-only restart and isolated state/timer/window tests;
 Kafka, ClickHouse, Neo4j, Airflow and Metabase stayed running.
 
@@ -184,23 +186,88 @@ HAIS GeoParquet files
 
 The HAIS landing layer is intentionally source-faithful. Normalization happens before loading into the canonical AIS table.
 
-#### Planned historical lakehouse extension
+#### Implemented historical lakehouse
 
 ```text
-HAIS GeoParquet → Airflow → PySpark → Iceberg → Trino
+Verified host HAIS Parquet -> separate upload -> MinIO source
+  -> PySpark -> iceberg.hais_raw.ais_positions
+  -> PySpark curated transformation -> iceberg.hais_curated.ais_positions
+  -> Trino validation and SQL
+Airflow: source check -> raw -> validate -> curated -> validate -> summary
 ```
 
-This extension is **planned/future and not deployed**. HAIS and Airflow are already
-used in the existing ClickHouse ingestion path; PySpark, Iceberg and Trino are the
-future lakehouse components. Flink is not part of this batch path.
+This path is deployed locally under the `lakehouse` profile. The preceding
+ClickHouse HAIS path is intentionally retained as legacy; neither it nor live
+Flink processing is part of the new DAG.
 
-| Component | Architectural role |
+| Component | Current role |
 | --- | --- |
-| Flink (current live path) | Continuous stateful stream processing. |
-| Airflow (current and planned paths) | Scheduling, dependencies and orchestration. |
-| PySpark (planned) | Distributed historical/batch processing. |
-| Iceberg (planned) | Lakehouse table format. |
-| Trino (planned) | SQL query layer over lakehouse tables. |
+| MinIO | S3-compatible source bucket and separate Iceberg warehouse. |
+| Iceberg REST catalog | Persistent SQLite catalog referencing Iceberg metadata in MinIO. |
+| PySpark | One-shot local drivers for raw ingestion and curated transformation. |
+| Trino | Single-node SQL engine with an 8 GiB heap and the shared Iceberg catalog. |
+| Airflow | Manual-only `ais_hais_lakehouse_load` orchestration; no source upload. |
+| Flink | Independent continuous live processing, not historical batch processing. |
+
+Sources live in `s3://ais-data/hais/source/`; table files/metadata live in
+`s3://warehouse/`. Raw preserves all 14 source columns, including binary geometry.
+Byte/short fields widen to Iceberg integers; source GEOMETRY annotations require
+the compatible Parquet reader and explicit Arrow-derived schema. Curated columns:
+
+| Column | Type | Required |
+| --- | --- | --- |
+| date_time | TIMESTAMP | Yes |
+| mmsi | INT | Yes |
+| longitude | DECIMAL(9,6) | Yes |
+| latitude | DECIMAL(8,6) | Yes |
+| navigational_status | INT | Yes |
+| course_over_ground | DECIMAL(5,2) | No |
+| true_heading | INT | No |
+| speed_over_ground | DECIMAL(5,2) | No |
+| rate_of_turn | INT | No |
+| maneuver | INT | Yes |
+| data_source | STRING | Yes |
+| ais_class | STRING | Yes |
+| message_type | INT | Yes |
+| geometry | BINARY | Yes |
+
+Mappings: `date_time_utc` -> `date_time`, `status` -> `navigational_status`,
+`maneuvre` -> `maneuver`, `msg_type` -> `message_type`. Course is retained only
+for `0 <= value < 360`; heading 511, speed 102.30 and turn -128 become NULL.
+There are no row filters, deduplication or enrichment. Coordinates round to six
+decimals. Partitioning is only `day(date_time)`. Spark TIMESTAMP appears in Trino
+as `timestamp(6) with time zone`; STRING/BINARY appear as varchar/varbinary.
+
+```sh
+docker compose --profile batch --profile lakehouse build airflow spark
+docker compose --profile batch --profile lakehouse up -d --wait --wait-timeout 300 airflow minio minio-init iceberg-rest trino
+# Verify HAIS_UPLOAD_HOST_DIR before this separate upload:
+docker compose --profile lakehouse run --rm hais-upload
+docker compose exec -T airflow airflow dags unpause ais_hais_lakehouse_load
+docker compose exec -T airflow airflow dags trigger --run-id hais_manual_1 ais_hais_lakehouse_load
+python3 lakehouse/validate_curated.py
+```
+
+The DAG has `schedule=None`, `catchup=False`, one active run and serial tasks.
+Source checks retry twice; Spark loads once, with a two-minute delay. Validators
+have no retries; failures block downstream tasks. Spark runs in disposable
+containers through DockerOperator, not inside Airflow. Logs and graph/run state
+are available in the Airflow UI. Local ports: Trino 8090, REST 8181, MinIO S3 9002,
+console 9003; existing ports are unchanged.
+
+Both full loads overwrite rather than append. Two manual runs on September 2026
+validated 30 files and 23,295,797 rows in each layer. Required NULL rows and
+remaining sentinels are zero. Expected optional NULL counts: course 2,517,680,
+heading 4,511,883, speed 50,962 and turn 4,221,794. Validation also verifies schema,
+partition metadata and representative daily queries.
+
+Limitations: local host/disk durability, SQLite REST fixture rather than a
+production catalog, no distributed HA/TLS, daemon control through Airflow's
+Docker socket, retained snapshots consuming disk, no cross-table transaction,
+no incremental loading and no simultaneous manual/DAG overwrites. Expected
+validation counts are September-specific. MinIO builds from pinned upstream
+source because community images were unavailable; Spark scripts must be rebuilt
+into the image for DockerOperator. See [complete operating instructions](../lakehouse/README.md).
 
 ### 2.3 Analytical / graph path
 
@@ -239,6 +306,7 @@ persisted outputs, not Neo4j as a replacement raw-history store. See the
 | `batch` | Airflow | Historical and daily analytics |
 | `analytics` | Metabase | BI/dashboarding |
 | `streaming` | Flink JobManager, two TaskManagers, checkpoint initializer and submitter | Stateful live features/gaps and recovery |
+| `lakehouse` | MinIO, REST catalog, Trino, Spark and separate upload client | Historical raw/curated Iceberg loads |
 
 ### 3.2 Project-owned images
 
@@ -391,7 +459,7 @@ Current pinned versions are dbt Core `1.12.5` and `dbt-clickhouse` `1.10.3`.
 
 Static AIS ship-type and navigation-status mappings are dbt seeds, not ad-hoc SQL embedded throughout models.
 
-## 7. Historical AIS processing
+## 7. Retained legacy historical ClickHouse processing
 
 Historical files are manually placed in `data/hais` with names such as:
 
@@ -660,7 +728,7 @@ Confirm:
 Stop services without deleting named volumes:
 
 ```bash
-docker compose --profile live --profile batch --profile analytics --profile streaming down
+docker compose --profile '*' down
 ```
 
 Do **not** add `-v` if data must be retained.
@@ -710,7 +778,7 @@ Current implementation includes:
 - semantic GitHub Releases;
 - GHCR publishing for Airflow, producer and custom Neo4j images. Flink is a local build.
 
-Planned learning extensions such as PySpark, MinIO, Iceberg, Trino, and `dbt-trino` are future work and should not be described as part of the current deployed runtime until implemented.
+The local MinIO/Iceberg/PySpark/Trino lakehouse and manual historical Airflow DAG are implemented. `dbt-trino`, incremental lakehouse ingestion and production distributed catalog/storage remain future work.
 
 
 ## PDF regeneration

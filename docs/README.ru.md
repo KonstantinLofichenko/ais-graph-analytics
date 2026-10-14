@@ -1,7 +1,7 @@
 # AIS Graph Analytics - Подробная документация проекта
 
 Актуальная архитектура и эксплуатация платформы. Документация проверена
-2026-10-08. [Английское руководство](README.md),
+2026-10-14. [Английское руководство](README.md),
 [English PDF](AIS-Graph-Analytics-ENG.pdf) и
 [Русский PDF](AIS-Graph-Analytics-RUS.pdf) описывают текущую реализацию.
 Инструкции конкретных компонентов находятся в их README; конфигурация в
@@ -19,6 +19,7 @@ Python producer передаёт live-сообщения в Kafka. ClickHouse х
 | Задача | Основная система |
 | --- | --- |
 | История AIS и аналитические таблицы | ClickHouse |
+| Исторический lakehouse | MinIO, Iceberg REST, PySpark и Trino |
 | SQL-преобразования | dbt на ClickHouse |
 | Live transport | Kafka |
 | Stateful stream processing | PyFlink 2.2.1 |
@@ -34,8 +35,8 @@ Python producer передаёт live-сообщения в Kafka. ClickHouse х
 
 [Масштабируемая SVG-диаграмма](assets/architecture.svg) и
 [исходник диаграммы](assets/README.md). Сплошные стрелки показывают данные,
-пунктирный слой - checkpoint/restore. Исторический lakehouse в янтарной области
-запланирован и пока не развёрнут.
+пунктирный слой - checkpoint/restore. Реализованный исторический lakehouse в янтарной области
+работает локально через manual Airflow DAG.
 
 ### 2.1 Три live-пути
 
@@ -167,26 +168,84 @@ docker compose exec -T flink-jobmanager /opt/flink/bin/flink run -d \
 Для feature job используйте features/ snapshot и ais_vessel_features.py.
 Обычные manual commands без `-s` начинают fresh state; для стандартного запуска
 предпочтителен submitter. Подробные команды и проверки:
-[Flink README](../flink/README.md). Проверка 2026-10-08 подтвердила Flink-only restart,
+[Flink README](../flink/README.md). Проверка 2026-10-14 подтвердила Flink-only restart,
 восстановление состояния/таймеров/окон, новые completed checkpoints и поступление
 результатов; Kafka, ClickHouse, Neo4j, Airflow и Metabase не перезапускались.
 
-### 2.4 Исторические данные и planned lakehouse
+### 2.4 Исторический lakehouse и сохранённый legacy-путь
 
 ```text
-Текущий путь:
-HAIS GeoParquet -> Airflow -> raw.hais_positions
-  -> dbt staging normalization -> canonical load -> raw.ais_positions
-
-Planned, не развёрнут:
-HAIS GeoParquet -> Airflow -> PySpark -> Iceberg -> Trino
+Legacy: HAIS -> Airflow -> raw.hais_positions -> dbt -> raw.ais_positions
+Lakehouse: HAIS -> отдельная загрузка в MinIO -> PySpark -> Iceberg raw
+  -> PySpark curated -> Iceberg curated -> Trino
+Airflow: check_source_files -> ingest_raw_iceberg -> validate_raw
+  -> curate_hais -> validate_curated -> final_summary
 ```
 
-HAIS landing сохраняет исходные значения; нормализация выполняется перед
-канонической загрузкой. В будущем Airflow будет координировать batch, PySpark
-выполнять distributed processing, Iceberg хранить lakehouse tables, Trino давать
-SQL-доступ. Flink остаётся continuous stateful stream processor в live-пути.
-MinIO и dbt-trino также относятся к roadmap.
+Lakehouse реализован локально. Старый ClickHouse/Airflow-путь сохранён без
+изменений. Live Kafka/Flink/ClickHouse/Neo4j/Metabase работает независимо.
+MinIO хранит source Parquet в `s3://ais-data/hais/source/`, а таблицы Iceberg -
+в отдельном `s3://warehouse/`. REST catalog использует persistent SQLite.
+PySpark выполняет raw ingestion и curated normalization; Trino даёт SQL-доступ.
+Airflow только запускает готовые jobs и validators, без загрузки host-файлов.
+
+Raw: `iceberg.hais_raw.ais_positions`. Curated:
+`iceberg.hais_curated.ais_positions`. Сохраняются все строки и binary geometry.
+Curated schema:
+
+| Колонка | Тип | NOT NULL |
+| --- | --- | --- |
+| date_time | TIMESTAMP | Да |
+| mmsi | INT | Да |
+| longitude | DECIMAL(9,6) | Да |
+| latitude | DECIMAL(8,6) | Да |
+| navigational_status | INT | Да |
+| course_over_ground | DECIMAL(5,2) | Нет |
+| true_heading | INT | Нет |
+| speed_over_ground | DECIMAL(5,2) | Нет |
+| rate_of_turn | INT | Нет |
+| maneuver | INT | Да |
+| data_source | STRING | Да |
+| ais_class | STRING | Да |
+| message_type | INT | Да |
+| geometry | BINARY | Да |
+
+Переименования: date_time_utc -> date_time, status -> navigational_status,
+maneuvre -> maneuver, msg_type -> message_type. Course сохраняется только при
+`0 <= value < 360`; heading 511, speed 102.30 и turn -128 становятся NULL.
+Координаты округляются до шести десятичных знаков. Других бизнес-преобразований,
+фильтрации или дедупликации нет. Единственная partition - `day(date_time)`.
+TIMESTAMP в Trino отображается как timestamp(6) with time zone; geometry - varbinary.
+
+```sh
+docker compose --profile batch --profile lakehouse build airflow spark
+docker compose --profile batch --profile lakehouse up -d --wait --wait-timeout 300 airflow minio minio-init iceberg-rest trino
+# Сначала проверить HAIS_UPLOAD_HOST_DIR и состав dataset:
+docker compose --profile lakehouse run --rm hais-upload
+docker compose exec -T airflow airflow dags unpause ais_hais_lakehouse_load
+docker compose exec -T airflow airflow dags trigger --run-id hais_manual_1 ais_hais_lakehouse_load
+python3 lakehouse/validate_curated.py
+```
+
+DAG `ais_hais_lakehouse_load` запускается вручную: schedule=None,
+catchup=False, max_active_runs=1. Spark работает в отдельных контейнерах через
+DockerOperator, не внутри Airflow. Source check повторяется до двух раз, Spark
+loads - один раз, задержка две минуты; validators без retries. Ошибка блокирует
+downstream. Graph view и task logs доступны в Airflow UI.
+
+Два полных manual runs проверены: 30 файлов за сентябрь 2026 и 23,295,797 строк
+в raw и curated. Повторный запуск не добавляет дубликаты. NULL counts: course
+2,517,680; heading 4,511,883; speed 50,962; turn 4,221,794. Обязательные поля без
+NULL, sentinels отсутствуют, 30 дневных partitions подтверждены.
+
+Trino: порт 8090, heap 8 GiB, query memory 4 GiB, total 6 GiB, headroom 2 GiB.
+REST: 8181; MinIO API: 9002; console: 9003. Старые порты не изменены.
+Ограничения: локальный диск, SQLite REST fixture, Docker socket даёт доступ к
+локальному daemon; нет distributed HA, incremental load или общей транзакции
+raw/curated. Старые snapshots могут занимать диск. Validation counts привязаны
+к сентябрю; нельзя запускать перекрывающиеся CLI/DAG overwrite loads.
+MinIO собирается из pinned upstream source; Spark image нужно пересобирать после
+изменения jobs. Полные команды и параметры: [lakehouse README](../lakehouse/README.md).
 
 ### 2.5 Аналитический граф
 
@@ -210,10 +269,12 @@ Metabase читает сохранённые аналитические резу
 | batch | Airflow: historical ingestion и суточные DAGs |
 | analytics | Metabase |
 | streaming | Flink JobManager, два TaskManager, checkpoint initializer, submitter |
+| lakehouse | MinIO, REST catalog, Trino, Spark и отдельный upload client |
 
 Release публикует три project-owned образа: airflow, producer и neo4j.
 Neo4j образ содержит ClickHouse JDBC JAR. Flink собирается локально и сейчас
-не входит в GHCR release. Upstream infrastructure images используются напрямую;
+не входит в GHCR release. MinIO и Spark также собираются локально и не входят в GHCR release. Остальные
+upstream infrastructure images используются напрямую;
 временные `*-ci` образы не являются release packages.
 
 ## 4. Установка с чистого состояния
@@ -321,7 +382,7 @@ AIS code mappings - seeds. Country-dependent модели требуют raw.cou
 optional Airbyte, обычный HAIS/canonical workflow от него не зависит.
 Детали incremental/history и точные команды: [dbt README](../dbt/README.md).
 
-## 7. Обработка historical AIS
+## 7. Сохранённый legacy historical ClickHouse путь
 
 Файлы hais_YYYY-MM-DD.snappy.parquet помещаются вручную в data/hais либо HAIS_HOST_DIR.
 Один каталог монтируется read-only в Airflow и ClickHouse. Файлы неизменны во время
@@ -531,7 +592,7 @@ Restore failure требует устранить причину; нельзя �
 ## 19. Безопасная остановка и cleanup
 
 ```sh
-docker compose --profile live --profile batch --profile analytics --profile streaming down
+docker compose --profile '*' down
 ```
 
 Не добавляйте -v, если данные должны сохраниться. Named registry volume и bind
@@ -565,8 +626,9 @@ checkpoint directory нужны для recovery. Для restart только Fli
 Реализованы live/historical ingestion, canonical ClickHouse history, dbt models,
 Airflow daily orchestration, Neo4j/GDS, deterministic anomalies, cached AI enrichment,
 durable Flink windows/gap timers, шесть Metabase tabs, шесть CI jobs, semantic
-releases и GHCR для airflow/producer/neo4j. PySpark, MinIO, Iceberg, Trino и dbt-trino
-запланированы, но не входят в текущий deployed runtime.
+releases и GHCR для airflow/producer/neo4j. MinIO, Iceberg REST, PySpark, Trino
+и manual historical DAG реализованы локально. dbt-trino, incremental lakehouse
+и production distributed catalog/storage остаются roadmap.
 
 ## Перегенерация PDF
 

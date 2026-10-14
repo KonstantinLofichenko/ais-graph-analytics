@@ -1,5 +1,9 @@
 # HAIS historical file ingestion
 
+This is the retained legacy ClickHouse historical path. The implemented
+MinIO/Iceberg/Spark/Trino pipeline uses the separate manual Airflow DAG; see
+[historical lakehouse operations](../../lakehouse/README.md).
+
 Manual DAG: `ais_hais_historical_ingestion`. HAIS ordering and downloading remain
 manual. Python only discovers/stats files, issues SQL, and handles audit events;
 ClickHouse reads the GeoParquet with an explicit schema that excludes geometry.

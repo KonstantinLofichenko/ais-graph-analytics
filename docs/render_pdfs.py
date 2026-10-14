@@ -100,7 +100,7 @@ class Guide(BaseDocTemplate):
         canvas.setFont('Body', 8)
         canvas.setFillColor(INK)
         canvas.drawString(MARGIN, height-28, 'AIS GRAPH ANALYTICS')
-        canvas.drawRightString(width-MARGIN, height-28, '2026-10-08 | ' + self.language)
+        canvas.drawRightString(width-MARGIN, height-28, '2026-10-14 | ' + self.language)
         canvas.setStrokeColor(colors.HexColor('#d7e2e8'))
         canvas.line(MARGIN, height-34, width-MARGIN, height-34)
         canvas.setFillColor(colors.HexColor('#607384'))
@@ -139,7 +139,7 @@ def render(language):
     story = [Spacer(1, 75), Paragraph('AIS Graph<br/>Analytics', styles['Cover'])]
     subtitle = 'Architecture and operations' if language == 'ENG' else 'Архитектура и эксплуатация'
     story += [Paragraph(subtitle, styles['H3']), Spacer(1, 20),
-              Paragraph('Konstantin Lofichenko<br/>2026-10-08', styles['Body']),
+              Paragraph('Konstantin Lofichenko<br/>2026-10-14', styles['Body']),
               Spacer(1, 24)]
     cover = ('Current live, historical and graph platform. Includes automatic PyFlink startup, '
              'durable checkpoint recovery, ClickHouse derived streams and the six-tab Metabase dashboard.'
@@ -177,7 +177,7 @@ def render(language):
             story += [NextPageTemplate('Diagram'), PageBreak()]
             if section_heading is not None:
                 story.append(section_heading)
-            heading = 'Architecture: current and planned paths' if language == 'ENG' else 'Архитектура: текущие и planned пути'
+            heading = 'Architecture: live and historical lakehouse paths' if language == 'ENG' else 'Архитектура: live и исторический lakehouse'
             story.append(Paragraph(heading, styles['H3']))
             image = Image(str(ROOT / 'assets/architecture.png'))
             available = landscape(A3)[0] - 2*MARGIN

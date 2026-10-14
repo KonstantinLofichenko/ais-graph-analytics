@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-docker compose down
+cd "$(dirname "${BASH_SOURCE[0]}")/.."
+# Include optional streaming, batch, analytics and lakehouse services.
+docker compose --profile '*' down

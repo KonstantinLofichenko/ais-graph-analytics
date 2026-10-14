@@ -18,3 +18,6 @@ COPY --chown=airflow:root dbt/tests /opt/ais/dbt/tests
 COPY --chown=airflow:root dbt/seeds /opt/ais/dbt/seeds
 COPY --chown=airflow:root clickhouse/init/02_port_visits.sql /opt/ais/clickhouse/init/02_port_visits.sql
 COPY --chown=airflow:root airflow/dags /opt/ais/airflow/dags
+
+# Shared lakehouse validators; Spark runs in its own existing image.
+COPY --chown=airflow:root lakehouse/validate_raw.py lakehouse/validate_curated.py lakehouse/validate_curated.sql /opt/ais/lakehouse/

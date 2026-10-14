@@ -1,10 +1,10 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="2100" height="1510" viewBox="0 0 2100 1510">
-<title>AIS Graph Analytics: current live architecture and planned historical lakehouse</title>
-<desc>Raw, PyFlink and graph paths feed persistent ClickHouse tables and Metabase. Dashed recovery links represent host-mounted checkpoints, not AIS data. The historical lakehouse is planned.</desc>
+<title>AIS Graph Analytics: current live and implemented historical lakehouse architecture</title>
+<desc>Raw, PyFlink and graph paths feed persistent ClickHouse tables and Metabase. Dashed recovery links represent host-mounted checkpoints, not AIS data. The historical lakehouse uses MinIO, an Iceberg REST catalog, Spark raw/curated jobs and a manual Airflow DAG.</desc>
 <rect width="100%" height="100%" fill="white"/>
 <text x="40" y="48" text-anchor="start" font-family="Arial,DejaVu Sans,sans-serif" font-size="36" font-weight="700" fill="#25324a">AIS Graph Analytics</text>
 <text x="40" y="87" text-anchor="start" font-family="Arial,DejaVu Sans,sans-serif" font-size="24" font-weight="400" fill="#25324a">Current live runtime, persistent analytics and checkpoint recovery</text>
-<text x="2060" y="87" text-anchor="end" font-family="Arial,DejaVu Sans,sans-serif" font-size="20" font-weight="400" fill="#718098">Updated 2026-10-08</text>
+<text x="2060" y="87" text-anchor="end" font-family="Arial,DejaVu Sans,sans-serif" font-size="20" font-weight="400" fill="#718098">Updated 2026-10-14</text>
 <text x="40" y="112" text-anchor="start" font-family="Arial,DejaVu Sans,sans-serif" font-size="18" font-weight="400" fill="#718098">Both PyFlink jobs enrich reference codes from dbt seeds</text>
 <rect x="250" y="125" width="400" height="78" rx="16" fill="#f8fafc" stroke="#718098" stroke-width="2"/>
 <text x="450.0" y="159" text-anchor="middle" font-family="Arial,DejaVu Sans,sans-serif" font-size="24" font-weight="700" fill="#25324a">BarentsWatch AIS</text>
@@ -127,14 +127,11 @@
 <polygon points="1450,1119 1438.2941876694151,1124.654551943446 1438.2941876694151,1113.345448056554" fill="#718098"/>
 <text x="1050" y="1190" text-anchor="middle" font-family="Arial,DejaVu Sans,sans-serif" font-size="20" font-weight="400" fill="#25324a">60s / EXACTLY_ONCE state / timeout 120s / max 1 / restart 10 x 10s / local-host durability; Kafka output at-least-once</text>
 <rect x="40" y="1250" width="2020" height="86" rx="16" fill="#f8fafc" stroke="#718098" stroke-width="2"/>
-<text x="1050.0" y="1284" text-anchor="middle" font-family="Arial,DejaVu Sans,sans-serif" font-size="24" font-weight="700" fill="#25324a">IMPLEMENTED HISTORICAL INGESTION</text>
+<text x="1050.0" y="1284" text-anchor="middle" font-family="Arial,DejaVu Sans,sans-serif" font-size="24" font-weight="700" fill="#25324a">RETAINED LEGACY HISTORICAL CLICKHOUSE PATH</text>
 <text x="1050.0" y="1315" text-anchor="middle" font-family="Arial,DejaVu Sans,sans-serif" font-size="24" font-weight="400" fill="#25324a">HAIS GeoParquet -&gt; Airflow -&gt; raw.hais_positions -&gt; dbt normalization -&gt; raw.ais_positions</text>
-<rect x="40" y="1362" width="2020" height="100" rx="16" fill="#fff7e7" stroke="#718098" stroke-width="2" stroke-dasharray="8 6"/>
-<polyline points="57,1362 2043,1362" fill="none" stroke="#718098" stroke-width="2.5" stroke-dasharray="8 6"/>
-<polyline points="57,1462 2043,1462" fill="none" stroke="#718098" stroke-width="2.5" stroke-dasharray="8 6"/>
-<polyline points="40,1379 40,1445" fill="none" stroke="#718098" stroke-width="2.5" stroke-dasharray="8 6"/>
-<polyline points="2060,1379 2060,1445" fill="none" stroke="#718098" stroke-width="2.5" stroke-dasharray="8 6"/>
-<text x="1050.0" y="1396" text-anchor="middle" font-family="Arial,DejaVu Sans,sans-serif" font-size="24" font-weight="700" fill="#25324a">PLANNED HISTORICAL LAKEHOUSE - future, not deployed</text>
-<text x="1050.0" y="1427" text-anchor="middle" font-family="Arial,DejaVu Sans,sans-serif" font-size="26" font-weight="400" fill="#25324a">HAIS GeoParquet -&gt; Airflow -&gt; PySpark -&gt; Iceberg -&gt; Trino</text>
+<rect x="40" y="1362" width="2020" height="100" rx="16" fill="#fff7e7" stroke="#718098" stroke-width="2"/>
+<text x="1050.0" y="1396" text-anchor="middle" font-family="Arial,DejaVu Sans,sans-serif" font-size="24" font-weight="700" fill="#25324a">IMPLEMENTED HISTORICAL LAKEHOUSE - manual Airflow load</text>
+<text x="1050.0" y="1427" text-anchor="middle" font-family="Arial,DejaVu Sans,sans-serif" font-size="20" font-weight="400" fill="#25324a">HAIS -&gt; MinIO source -&gt; PySpark raw -&gt; Iceberg raw -&gt; PySpark curated -&gt; Iceberg curated -&gt; Trino</text>
+<text x="1050.0" y="1455" text-anchor="middle" font-family="Arial,DejaVu Sans,sans-serif" font-size="20" font-weight="400" fill="#25324a">Airflow: check -&gt; raw -&gt; validate -&gt; curated -&gt; validate | REST catalog + MinIO warehouse</text>
 <text x="40" y="1493" text-anchor="start" font-family="Arial,DejaVu Sans,sans-serif" font-size="20" font-weight="400" fill="#718098">Solid arrows: data flow. Recovery is a supporting layer. Metabase never queries Kafka Engine transport tables.</text>
 </svg>
